@@ -1,6 +1,8 @@
-#include <GLFW/glfw3.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#define GLFW_INCLUDE_GLCOREARB
+#include <GLFW/glfw3.h>
 
 static void glfwErrorHandler(int error, const char* description) {
   fputs(description, stderr);
@@ -14,75 +16,166 @@ static void glfwKeyHandler(GLFWwindow* window, int key, int scancode, int action
   }
 }
 
-int main (int argc, char **argv) {
-  if (!glfwInit()) {
+#define countof(x) (sizeof(x) / sizeof(0[x]))
+
+#define M_PI 3.141592653589793
+#define ATTRIB_POINT 0
+
+static GLuint compile_shader(GLenum type, const GLchar *source) {
+  GLuint shader = glCreateShader(type);
+  glShaderSource(shader, 1, &source, NULL);
+  glCompileShader(shader);
+  GLint param;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &param);
+  if (!param) {
+    GLchar log[4096];
+    glGetShaderInfoLog(shader, sizeof(log), NULL, log);
+    fprintf(stderr, "error: %s: %s\n",
+            type == GL_FRAGMENT_SHADER ? "frag" : "vert", (char *) log);
     exit(EXIT_FAILURE);
   }
+  return shader;
+}
 
-  glfwSetErrorCallback(glfwErrorHandler);
+static GLuint link_program(GLuint vert, GLuint frag) {
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vert);
+  glAttachShader(program, frag);
+  glLinkProgram(program);
+  GLint param;
+  glGetProgramiv(program, GL_LINK_STATUS, &param);
+  if (!param) {
+    GLchar log[4096];
+    glGetProgramInfoLog(program, sizeof(log), NULL, log);
+    fprintf(stderr, "error: link: %s\n", (char *) log);
+    exit(EXIT_FAILURE);
+  }
+  return program;
+}
 
-  GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-  const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-  glfwWindowHint(GLFW_RED_BITS, mode->redBits);
-  glfwWindowHint(GLFW_GREEN_BITS, mode->greenBits);
-  glfwWindowHint(GLFW_BLUE_BITS, mode->blueBits);
-  glfwWindowHint(GLFW_REFRESH_RATE, mode->refreshRate);
+struct graphics_context {
+  GLFWwindow *window;
+  GLuint program;
+  GLint uniform_angle;
+  GLuint vbo_point;
+  GLuint vao_point;
+  double angle;
+  long framecount;
+  double lastframe;
+};
 
-  /*
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+const float SQUARE[] = {
+  -1.0f,  1.0f,
+  -1.0f, -1.0f,
+  1.0f,  1.0f,
+  1.0f, -1.0f
+};
+
+static void render(struct graphics_context *context) {
+  glClearColor(0.0, 0.0, 0.0, 1);
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  glUseProgram(context->program);
+  glUniform1f(context->uniform_angle, context->angle);
+  glBindVertexArray(context->vao_point);
+  glDrawArrays(GL_TRIANGLE_STRIP, 0, countof(SQUARE) / 2);
+  glBindVertexArray(0);
+  glUseProgram(0);
+
+  /* Physics */
+  double now = glfwGetTime();
+  double udiff = now - context->lastframe;
+  context->angle += 1.0 * udiff;
+  if (context->angle > 2 * M_PI)
+    context->angle -= 2 * M_PI;
+  context->framecount++;
+  if ((long)now != (long)context->lastframe) {
+    printf("FPS: %ld\n", context->framecount);
+    context->framecount = 0;
+  }
+  context->lastframe = now;
+
+  glfwSwapBuffers(context->window);
+}
+
+int main(int argc, char **argv) {
+  /* Create window and OpenGL context */
+  struct graphics_context context;
+  if (!glfwInit()) {
+    fprintf(stderr, "GLFW3: failed to initialize\n");
+    exit(EXIT_FAILURE);
+  }
+  glfwWindowHint(GLFW_SAMPLES, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+  glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  */
-    
-  GLFWwindow* window =
-    glfwCreateWindow(mode->width, mode->height,
-                     "Get Bonus Machine",
-                     monitor, NULL);
-  if (!window) {
-    glfwTerminate();
-    exit(EXIT_FAILURE);
-  }
 
-  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-  
-  glfwMakeContextCurrent(window);
-                                   
+  GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+  const GLFWvidmode *m = glfwGetVideoMode(monitor);
+  context.window =
+    glfwCreateWindow(m->width, m->height, "Get Bonus Machine", monitor, NULL);
+
+  glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+  glfwMakeContextCurrent(context.window);
   glfwSwapInterval(1);
 
-  glfwSetKeyCallback(window, glfwKeyHandler);
+  /* Shader sources */
+  const GLchar *vert_shader =
+    "#version 330\n"
+    "layout(location = 0) in vec2 point;\n"
+    "uniform float angle;\n"
+    "void main() {\n"
+    "    mat2 rotate = mat2(cos(angle), -sin(angle),\n"
+    "                       sin(angle), cos(angle));\n"
+    "    gl_Position = vec4(0.75 * rotate * point, 0.0, 1.0);\n"
+    "}\n";
+  const GLchar *frag_shader =
+    "#version 330\n"
+    "out vec4 color;\n"
+    "void main() {\n"
+    "    color = vec4(1, 0.15, 0.15, 0);\n"
+    "}\n";
 
-  while (!glfwWindowShouldClose(window)) {
-    int width = 0, height = 0;
-    glfwGetFramebufferSize(window, &width, &height);
-    float ratio = ((float) width) / ((float) height);
-    
-    glViewport(0, 0, width, height);
-    glClear(GL_COLOR_BUFFER_BIT);
-    
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(-ratio, ratio, -1.f, 1.f, 1.f, -1.f);
-    glMatrixMode(GL_MODELVIEW);
-    
-    glLoadIdentity();
-    glRotatef((float) glfwGetTime() * 50.f, 0.f, 0.f, 1.f);
-    
-    glBegin(GL_TRIANGLES);
-    glColor3f(1.f, 0.f, 0.f);
-    glVertex3f(-0.6f, -0.4f, 0.f);
-    glColor3f(0.f, 1.f, 0.f);
-    glVertex3f(0.6f, -0.4f, 0.f);
-    glColor3f(0.f, 0.f, 1.f);
-    glVertex3f(0.f, 0.6f, 0.f);
-    glEnd();
+  /* Compile and link OpenGL program */
+  GLuint vert = compile_shader(GL_VERTEX_SHADER, vert_shader);
+  GLuint frag = compile_shader(GL_FRAGMENT_SHADER, frag_shader);
+  context.program = link_program(vert, frag);
+  context.uniform_angle = glGetUniformLocation(context.program, "angle");
+  glDeleteShader(frag);
+  glDeleteShader(vert);
 
-    glfwSwapBuffers(window);
+  /* Prepare vertex buffer object (VBO) */
+  glGenBuffers(1, &context.vbo_point);
+  glBindBuffer(GL_ARRAY_BUFFER, context.vbo_point);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(SQUARE), SQUARE, GL_STATIC_DRAW);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+  /* Prepare vertrex array object (VAO) */
+  glGenVertexArrays(1, &context.vao_point);
+  glBindVertexArray(context.vao_point);
+  glBindBuffer(GL_ARRAY_BUFFER, context.vbo_point);
+  glVertexAttribPointer(ATTRIB_POINT, 2, GL_FLOAT, GL_FALSE, 0, 0);
+  glEnableVertexAttribArray(ATTRIB_POINT);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+
+  /* Start main loop */
+  glfwSetKeyCallback(context.window, glfwKeyHandler);
+  context.lastframe = glfwGetTime();
+  context.framecount = 0;
+  while (!glfwWindowShouldClose(context.window)) {
+    render(&context);
     glfwPollEvents();
   }
+  fprintf(stderr, "Exiting ...\n");
 
-  glfwDestroyWindow(window);
+  /* Cleanup and exit */
+  glDeleteVertexArrays(1, &context.vao_point);
+  glDeleteBuffers(1, &context.vbo_point);
+  glDeleteProgram(context.program);
 
   glfwTerminate();
-  exit(EXIT_SUCCESS);
+  return 0;
 }
