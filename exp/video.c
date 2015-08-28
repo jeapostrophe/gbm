@@ -98,7 +98,7 @@ static void render(struct graphics_context *context) {
   glfwSwapBuffers(context->window);
 }
 
-int main(int argc, char **argv) {
+int video_main() {
   /* Create window and OpenGL context */
   struct graphics_context context;
   if (!glfwInit()) {

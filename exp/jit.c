@@ -5,7 +5,7 @@ static jit_state_t *_jit;
 
 typedef int (*pifi)(int);       /* Pointer to Int Function of Int */
 
-int main( int argc, char *argv[] ) {
+int jit_main() {
   pifi       fib;
   jit_node_t *in;               /* offset of the argument */
   jit_node_t *ref;              /* to patch the forward reference */
@@ -17,7 +17,7 @@ int main( int argc, char *argv[] ) {
          JIT_V_NUM,
          JIT_F_NUM);
   
-  init_jit(argv[0]);
+  init_jit(NULL);
   _jit = jit_new_state();
 
         jit_prolog   ();
@@ -46,5 +46,6 @@ int main( int argc, char *argv[] ) {
   printf("fib(%d) = %d\n", 36, fib(36));
   jit_destroy_state();
   finish_jit();
+  getc(stdin);
   return 0;
 }

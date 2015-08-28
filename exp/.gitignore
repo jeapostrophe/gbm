@@ -1,5 +1,2 @@
-/vm
-/video
-/audio
-/jit
-/thread
+/gbm
+*.o

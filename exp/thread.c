@@ -17,7 +17,7 @@ void *perform_work(void *argument)
    return NULL;
 }
  
-int main(void)
+int thread_main(void)
 {
    pthread_t threads[NUM_THREADS];
    int thread_args[NUM_THREADS];
@@ -42,5 +42,6 @@ int main(void)
    }
  
    printf("In main: All threads completed successfully\n");
+   getc(stdin);
    exit(EXIT_SUCCESS);
 }

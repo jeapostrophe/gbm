@@ -104,8 +104,8 @@ static void StreamFinished( void* userData )
 }
 
 /*******************************************************************/
-int main(void);
-int main(void)
+int audio_main(void);
+int audio_main(void)
 {
     PaStreamParameters outputParameters;
     PaStream *stream;

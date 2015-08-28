@@ -340,7 +340,7 @@ void eval ( Exp_p e ) {
   }
 }
 
-int main (int argc, char **argv) {
+int vm_main () {
   // omega = \x.x x
   Exp_p arg_ref = new_Exp();
   arg_ref->Tag = EXP_REF;
