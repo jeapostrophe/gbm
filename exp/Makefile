@@ -12,4 +12,4 @@ size:
 	du -hac $(TARGETS)
 
 clean:
-	rm -f $(TARGETS)
+	rm -f $(TARGETS) *.o
