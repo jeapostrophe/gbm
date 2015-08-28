@@ -229,7 +229,7 @@ Val_p lookup(Var v, Env_p env) {
     env = env->cdr;
   }
   return env->car;
-};
+}
 
 uint8_t step (Sigma_p sig, Sigma_p next_sig) {
   switch (sig->Tag) {

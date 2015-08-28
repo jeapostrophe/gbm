@@ -1,2 +1,5 @@
 /vm
 /video
+/audio
+/jit
+/thread
