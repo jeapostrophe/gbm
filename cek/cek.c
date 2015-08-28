@@ -39,6 +39,7 @@ struct Val {
 };
 
 struct Env {
+  uint8_t count;
   Val_p car;
   Env_p cdr;
 };
@@ -125,7 +126,7 @@ void display_Env(Env_p env) {
   while (env) {
     display_Val(env->car);
     env = env->cdr;
-  }      
+  }
   printf("]");
 }
 
@@ -186,19 +187,40 @@ void display_Sigma(Sigma_p sig) {
 // Code
 
 Exp_p new_Exp() {
+  printf("alloc(Exp)\n");
   return (Exp_p)(malloc(sizeof(struct Exp)));
 }
 Kont_p new_Kont() {
+  printf("alloc(Kont)\n");
   return (Kont_p)(malloc(sizeof(struct Kont)));
 }
 Val_p new_Val() {
+  printf("alloc(Val)\n");
   return (Val_p)(malloc(sizeof(struct Val)));
 }
 Sigma_p new_Sigma() {
+  printf("alloc(Sigma)\n");
   return (Sigma_p)(malloc(sizeof(struct Sigma)));
 }
 Env_p new_Env() {
-  return (Env_p)(malloc(sizeof(struct Env)));
+  printf("alloc(Env)\n");
+  Env_p e = (Env_p)(malloc(sizeof(struct Env)));
+  e->count = 0;
+  return e;
+}
+
+void retain_Env(Env_p env) {
+  if (env) {
+    env->count++;
+  }
+}
+void release_Env(Env_p env) {
+  if (env) {
+    env->count--;
+    if (env->count == 0) {
+      free(env);
+    }
+  }
 }
 
 Val_p lookup(Var v, Env_p env) {
@@ -218,6 +240,8 @@ uint8_t step (Sigma_p sig, Sigma_p next_sig) {
       next_sig->Tag = SIG_APPLY;
       next_sig->Obj.Apply.V = val;
       next_sig->Obj.Apply.K = sig->Obj.Eval.K;
+      // C & E are dead
+      release_Env(sig->Obj.Eval.E);
       return 1;
     }
     case EXP_LAM: {
@@ -225,9 +249,11 @@ uint8_t step (Sigma_p sig, Sigma_p next_sig) {
       val->Tag = VAL_CLO;
       val->Obj.Clo.lam = sig->Obj.Eval.C->Obj.Lam.body;
       val->Obj.Clo.env = sig->Obj.Eval.E;
+      retain_Env(sig->Obj.Eval.E);
       next_sig->Tag = SIG_APPLY;
       next_sig->Obj.Apply.V = val;
       next_sig->Obj.Apply.K = sig->Obj.Eval.K;
+      // C is dead
       return 1;
     }
     case EXP_APP: {
@@ -235,11 +261,13 @@ uint8_t step (Sigma_p sig, Sigma_p next_sig) {
       kont->Tag = KONT_AR;
       kont->Obj.Ar.rand = sig->Obj.Eval.C->Obj.App.rand;
       kont->Obj.Ar.env = sig->Obj.Eval.E;
+      retain_Env(sig->Obj.Eval.E);
       kont->Obj.Ar.k = sig->Obj.Eval.K;
       next_sig->Tag = SIG_EVAL;
       next_sig->Obj.Eval.C = sig->Obj.Eval.C->Obj.App.rator;
       next_sig->Obj.Eval.E = sig->Obj.Eval.E;
       next_sig->Obj.Eval.K = kont;
+      // C is dead
       return 1;
     }
     default:
@@ -260,6 +288,8 @@ uint8_t step (Sigma_p sig, Sigma_p next_sig) {
       next_sig->Obj.Eval.C = sig->Obj.Apply.K->Obj.Ar.rand;
       next_sig->Obj.Eval.E = sig->Obj.Apply.K->Obj.Ar.env;
       next_sig->Obj.Eval.K = kont;
+      // K is dead
+      free(sig->Obj.Apply.K);
       return 1;
     }
     case KONT_FN: {
@@ -269,7 +299,10 @@ uint8_t step (Sigma_p sig, Sigma_p next_sig) {
       next_sig->Tag = SIG_EVAL;
       next_sig->Obj.Eval.C = sig->Obj.Apply.K->Obj.Fn.rator->Obj.Clo.lam;
       next_sig->Obj.Eval.E = env;
+      retain_Env(env);
       next_sig->Obj.Eval.K = sig->Obj.Apply.K->Obj.Fn.k;
+      // K is dead
+      free(sig->Obj.Apply.K);
       return 1;
     }
     default:
@@ -319,14 +352,14 @@ int main (int argc, char **argv) {
   Exp_p omega = new_Exp();
   omega->Tag = EXP_LAM;
   omega->Obj.Lam.body = omega_body;
-    
+
   // Omega = (omega omega)
   Exp_p Omega = new_Exp();
   Omega->Tag = EXP_APP;
   Omega->Obj.App.rator = omega;
   Omega->Obj.App.rand = omega;
-  
+
   eval( Omega );
-  
+
   return 0;
 }
