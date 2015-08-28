@@ -1,0 +1,17 @@
+gbm - Get Bonus Machine
+
+A fantasy console.
+
+DONE:
+- Experiment with extremely minimal OpenGL window setup
+
+- Experiment with extremely minimal code execution
+
+TODO:
+
+- Experiment with GNU lightning
+  https://www.gnu.org/software/lightning/manual/lightning.html
+
+- Experiment with minimal sound
+- Experiment with minimal threading to connect them together
+- Expand language & port sound & graphics code
