@@ -15,3 +15,17 @@ TODO:
 - Experiment with minimal sound
 - Experiment with minimal threading to connect them together
 - Expand language & port sound & graphics code
+
+IDEAS:
+- interim has a simple JIT that is neat
+https://github.com/mntmn/interim/blob/master/sledge/jit_x64.c
+
+- I could make the programs like an old ROM where we have a header
+  that describes stuff like, how much RAM, SRAM, etc there is. It
+  could also say how many display sprites can be used at once and
+  stuff like that. This would facilitate stuff like auto-reloading of
+  code and objects, plus simplifying perform because we could be
+  guaranteed there are no system calls or anything.
+
+- It would be cool to integrate this project with manual-compiler and
+  directly build the binary blobs from assembly. 
