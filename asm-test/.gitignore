@@ -1,0 +1,6 @@
+/asm
+/asm.s
+/fib
+/fib-launch
+/fib.bin
+*.o
