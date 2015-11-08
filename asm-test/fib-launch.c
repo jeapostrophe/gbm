@@ -2,8 +2,9 @@
 #include <sys/mman.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <time.h>
 
-typedef int (*bin_fptr)();
+typedef int (*bin_fptr)(int);
 
 int main(int argc, char **argv) {
   const char *bin_path = argv[1];
@@ -22,8 +23,16 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  int r = ((bin_fptr) bin_ptr)();
-  printf("result is %d\n", r);
+  clock_t before = clock();
+  int r = ((bin_fptr) bin_ptr)(16);
+  clock_t after = clock();
+  clock_t span = after - before;
+
+  double fspan = span;
+  double fcps = CLOCKS_PER_SEC;
+  double fspan_ms = fspan/fcps * 1000.0;
+  
+  printf("result is %d (%gms)\n", r, fspan_ms);
 
   if ( munmap(bin_ptr, bin_len) == -1 ) {
     return -1;
