@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
   }
 
   clock_t before = clock();
-  int r = ((bin_fptr) bin_ptr)(16);
+  int r = ((bin_fptr) bin_ptr)(12);
   clock_t after = clock();
   clock_t span = after - before;
 

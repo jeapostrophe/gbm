@@ -2,7 +2,10 @@ CFLAGS = -std=gnu99
 
 .PHONY: fib fib2 asm all
 
-all: fib2
+all: fib2 fib3
+
+fib3:
+	time racket -t fib3.rkt
 
 fib:
 	as fib.s -o fib.o
@@ -12,7 +15,7 @@ fib:
 	./fib ; echo $$?
 	cc -std=c99 fib-launch.c -o fib-launch
 	ls -l fib*
-	./fib-launch fib.bin
+	time ./fib-launch fib.bin
 
 fib2:
 	nasm -w+all -Ox -f bin fib2.s -o fib2.bin
