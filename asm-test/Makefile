@@ -2,7 +2,7 @@ CFLAGS = -std=gnu99
 
 .PHONY: fib fib2 asm all
 
-all: fib2 fib3
+all: fib2 fib4 fib3
 
 fib3:
 	time racket -t fib3.rkt
@@ -22,6 +22,12 @@ fib2:
 	cc -std=c99 fib-launch.c -o fib-launch
 	ls -l fib*
 	time ./fib-launch fib2.bin
+
+fib4:
+	nasm -w+all -Ox -f bin fib4.s -o fib4.bin
+	cc -std=c99 fib-launch.c -o fib-launch
+	ls -l fib*
+	time ./fib-launch fib4.bin
 
 asm: asm.c
 	cc $(CFLAGS) -S -march=native -c $^

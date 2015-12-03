@@ -29,3 +29,41 @@ https://github.com/mntmn/interim/blob/master/sledge/jit_x64.c
 
 - It would be cool to integrate this project with manual-compiler and
   directly build the binary blobs from assembly. 
+
+- I spent a lot of time thinking about the Famicube project
+  http://androidarts.com/palette/Famicube.htm and all his interesting
+  ideas. Some interesting thing about limiting the colors to 64, then
+  you can fit a 256*256 screen in 48kb, which is pretty awesome. Even
+  cooler is a 16 color palette which gives a 32kb screen size, which
+  is nicer for byte-wise math:
+  http://pixeljoint.com/forum/forum_posts.asp?TID=12795
+
+- Some of the big worries I have right now: how do I effectively work
+  on iPhone, iPad, and my computer? The big problem is the programming
+  language... I want to write my own low-level thing directly in
+  assembly, but clearly that isn't portable, but it would be high
+  performance and teach me a lot about compilation. On the other hand,
+  I could compile to LLVM and ignore ABIs. On the other hand, I could
+  compile to C, but then I'd lack the ability to improve a lot of
+  things about compilation. I could also just write my own bytecode
+  format and act as those it is its own machine. Given that NES/SNES
+  emulators are super fast, this seems like a plausible implementation
+  technique for the games I'm interested in, but is less likely to
+  produce valuable software for general-purpose programming. An
+  additional pain to all of it is how it is going to work with iOS
+  that restricts dynamic code... is it even possible to distribute
+  ROMs like that?
+
+- Limited memory means there are not infinite levels, unless they are
+  chunked in some way, and decoding a string into a level is likely to
+  be highly unpredictable from a memory POV. One idea is to have that
+  be an external step that produces a ROM before you load it, but that
+  then means Racket code needs to be runable on the game side, which
+  is a bit awkward. And it is a bit self-defeating on the stand-point
+  of distributing tiny ROMs.
+    
+- I really like the idea of making a "development kit" with an editor,
+  map editor, sprite, sound, etc. Clearly it would be nicest to have
+  that run on the actual "hardware" for consistency, but it needs to
+  be much more powerful because of things like screen real-estate for
+  programming, access to files, compilation, and stuff like that.

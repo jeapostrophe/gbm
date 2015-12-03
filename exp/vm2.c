@@ -65,9 +65,24 @@ typedef struct {
 
 // Video code
 
+/* The SNES has 4 layers, but this number is chosen to make all of the
+   layer data on one 4k page. This number has to be smaller than the
+   OpenGL texture count limit (given the default implementation
+   technique.) */
+
 #define VRAM_LAYER_LIMIT 64
+
+/* These numbers are chosen so that you can have a number of static
+   sprites (like for the background) equal to the number of tiles in
+   all of Legend of Zelda (the entire map, above and below) and then a
+   number of dynamic sprites equal to half that amount. The static
+   limit works out to about 2,048 "screens" of content, assuming a
+   256x256 screen with 8x8 tiles---of course, the tiles don't have to
+   be 8x8, so there could really be much more. */
+
 #define VRAM_STATIC_LIMIT (1<<16)
 #define VRAM_DYNAMIC_LIMIT (1<<15)
+
 
 /* The video system is based on a static set of image data and a small
    number of layers of sprites. The image data (the video ROM)
@@ -125,7 +140,7 @@ typedef struct {
 } VRAM_t;
 
 /* The audio system is a simple stereo buffer with 16-bit samples
-   running at the machine Hz */
+   running at the machine Hz. */
 
 #define AUDIO_CHANNELS 2
 #define AUDIO_SAMPLE_RATE 44100
@@ -134,6 +149,59 @@ typedef struct {
 typedef int16_t AUDIO_sample_t;
 typedef AUDIO_sample_t AUDIO_samples_t[AUDIO_CHANNELS];
 typedef AUDIO_samples_t ARAM_t[AUDIO_SAMPLES_PER_FRAME];
+
+// Alternatively I could assume that I have 2 Pulse, 2 Triangle, 3
+// Noise, and 1 Sample buffer. This doesn't really seem to save that
+// much space, because the sample buffer is so big. An alternative
+// idea is to make audio and audio "ROM" and give a pointer to which
+// sample is to be played. The problem with that is that it doesn't do
+// the positional mixing I want (unless you build that in). Another
+// problem with this is that it could put state into the machine
+// between frames (the state of the oscillators) and if you didn't
+// then certain waves couldn't be produced (For example: a pulse wave
+// that overlaps the clock would be reset if you didn't save the pulse
+// state between frames. Alternatively, this could be put into the
+// program's RAM, which is pretty messy and ugly.)
+
+typedef uint16_t
+/* struct {
+  unsigned tone:7;
+  unsigned padding1:1;
+  
+  unsigned duty:2;
+  unsigned volume:4;
+  unsigned padding2:2;
+  } */ SYNTH_pulse_t;
+
+typedef uint8_t
+/* struct {
+  unsigned tone:7;
+  unsigned on:1;
+  } */ SYNTH_triangle_t;
+
+typedef uint8_t
+/* struct {
+  unsigned period:4;
+  unsigned volume:4;
+  } */ SYNTH_noise_t;
+
+// XXX 255 samples, 4bits of "distance" on either side (0=center),
+// should there be something to scale the volume?
+typedef struct {
+  uint8_t num;
+  uint8_t bias;
+} SYNTH_sample_t;
+
+typedef struct {
+  // Soprano + Alto
+  SYNTH_pulse_t p[2];
+  // Tenor + Bass
+  SYNTH_triangle_t t[2];
+  // A 3-piece drum kit (4-piece would have have 7)
+  SYNTH_noise_t n[5];
+  // 10 samples, chosen so the whole structure is 32 bytes
+  SYNTH_sample_t s[10];
+} SYNTH_t;
 
 /* Runtime system 
 
@@ -292,6 +360,13 @@ void show_sizes() {
   show_size("ARAM_t", sizeof(ARAM_t));
   printf("\n");
 
+  show_size("SYNTH_pulse_t", sizeof(SYNTH_pulse_t));
+  show_size("SYNTH_triangle_t", sizeof(SYNTH_triangle_t));
+  show_size("SYNTH_noise_t", sizeof(SYNTH_noise_t));
+  show_size("SYNTH_sample_t", sizeof(SYNTH_sample_t));
+  show_size("SYNTH_t", sizeof(SYNTH_t));
+  printf("\n");
+  
   show_size("INPUT_LIMIT", INPUT_LIMIT);
   show_size("input_type_t", sizeof(input_type_t));
   show_size("input_kind_t", sizeof(input_kind_t));

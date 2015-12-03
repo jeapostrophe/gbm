@@ -18,10 +18,13 @@ int main(int argc, char **argv) {
   fstat(bin_fd, &bin_st);
   int bin_len = bin_st.st_size;
 
-  void *bin_ptr = mmap(NULL, bin_len, PROT_EXEC | PROT_READ, MAP_FILE | MAP_PRIVATE, bin_fd, 0);
+  void *bin_ptr =
+    mmap(NULL, bin_len, PROT_EXEC | PROT_READ, MAP_FILE | MAP_PRIVATE, bin_fd, 0);
   if (bin_ptr == MAP_FAILED) {
     return -1;
   }
+
+  printf("binary is at %p\n", bin_ptr);
 
   clock_t before = clock();
   int r = ((bin_fptr) bin_ptr)(12);
