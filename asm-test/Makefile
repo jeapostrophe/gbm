@@ -27,13 +27,13 @@ fib2: fib-launch
 fib4:
 	cc -O3 -std=c99 fib4.c -o fib4
 	ls -l fib4
-	./fib4 12
+	time ./fib4 12
 	rm -f fib4
 
 asm: asm.c
 	cc $(CFLAGS) -S -march=native -c $^
 	cc $(CFLAGS) -march=native $^ -o asm
-	./asm 5 ; echo $$?
+	time ./asm 5 ; echo $$?
 	cat asm.s
 
 fib5:
@@ -45,5 +45,5 @@ fib5:
 
 vm:
 	cc -std=c99 -O3 vm.c -o vm
-	./vm 12
+	time ./vm 12
 	rm -f vm

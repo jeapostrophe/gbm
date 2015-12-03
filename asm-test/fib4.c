@@ -35,8 +35,10 @@ int f_asmlike(int x) {
 }
 
 void test(const char* label, int (*f)(int), int n) {
+  uint64_t r;
   clock_t before = clock();
-  int r = f(n);
+  for (int i = 0; i < 10000; i++ ) 
+    r = f(n);
   clock_t after = clock();
   clock_t span = after - before;
 
@@ -44,7 +46,7 @@ void test(const char* label, int (*f)(int), int n) {
   double fcps = CLOCKS_PER_SEC;
   double fspan_ms = fspan/fcps * 1000.0;
 
-  printf("%s: %d (%gms)\n", label, r, fspan_ms);
+  printf("%s: %llu (%gms)\n", label, r, fspan_ms);
 }
 
 

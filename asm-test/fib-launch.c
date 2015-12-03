@@ -27,8 +27,10 @@ int main(int argc, char **argv) {
 
   printf("binary is at %p\n", bin_ptr);
 
+  uint64_t r;
   clock_t before = clock();
-  int r = ((bin_fptr) bin_ptr)(12);
+  for (int i = 0; i < 10000; i++ ) 
+    r = ((bin_fptr) bin_ptr)(12);
   clock_t after = clock();
   clock_t span = after - before;
 
@@ -36,7 +38,7 @@ int main(int argc, char **argv) {
   double fcps = CLOCKS_PER_SEC;
   double fspan_ms = fspan/fcps * 1000.0;
   
-  printf("result is %d (%gms)\n", r, fspan_ms);
+  printf("result is %llu (%gms)\n", r, fspan_ms);
 
   if ( munmap(bin_ptr, bin_len) == -1 ) {
     return -1;
