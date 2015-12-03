@@ -3,6 +3,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <stdlib.h>
 
 typedef int (*bin_fptr)(int);
 
