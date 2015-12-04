@@ -1,8 +1,8 @@
 CFLAGS = -std=gnu99
 
-.PHONY: fib fib2 asm all fib3 fib4 fib5 vm
+.PHONY: fib fib2 asm all fib3 fib4 fib5 vm vm2
 
-all: fib2 fib4 fib3 fib5 vm
+all: fib2 fib4 fib3 fib5 vm vm2
 
 fib3:
 	time racket -t fib3.rkt
@@ -45,5 +45,13 @@ fib5:
 
 vm:
 	cc -std=c99 -O3 vm.c -o vm
+	ls -l vm
+#	otool -tv vm
 	time ./vm 12
 	rm -f vm
+
+vm2:
+	cc -std=c99 -O3 -nostdlib -fPIC vm2.c -c -o vm2.o
+	gobjcopy -O binary vm2.o vm2.bin
+	ls -l vm2.o vm2.bin
+	time ./fib-launch vm2.bin

@@ -18,19 +18,23 @@ DEFAULT REL
 %define rfa6 xmm6
 %define rfa7 xmm7
     
-fac: mov r9, 1
-ifac: cmp ria0, 0
-    je fac_done
-    imul r9, ria0
+fac:
+    mov r0, 1
+    test ria0, ria0
+    jz fac_done
+ifac:
+    imul r0, ria0
     sub ria0, 1
-    jmp ifac
-fac_done:  mov r0, r9
+    jnz ifac
+fac_done:
     ret
-section ROM
-;;align 4096
-c1: dw 55
-section .bss
-;;align 4096
-v1:
-align 64
-v2:
+
+;; section ROM
+;; align 4096
+;; c1: dw 55
+
+;; section .bss
+;; align 4096
+;; v1:
+;; align 64
+;; v2:
