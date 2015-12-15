@@ -6,7 +6,9 @@
       acc
       (fac-inner (sub1 i) (* acc i))))
 (define before (current-inexact-milliseconds))
-(define r (fac 12))
+(define r #f)
+(for ([i (in-range 10000)])
+  (set! r (fac 12)))
 (define after (current-inexact-milliseconds))
 (define span (- after before))
 (printf "result is ~a (~ams)\n" r span)

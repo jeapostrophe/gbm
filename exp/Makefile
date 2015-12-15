@@ -9,6 +9,8 @@ vm2: vm2.c
 
 vm2-test:
 	./vm2
+	rk bytecode.rkt > bytecode.h
+	cc $(CFLAGS) bytecode.h
 
 gbm: gbm.o audio.o jit.o thread.o video.o vm.o
 	cc $(CFLAGS) -o $@ $^ $(LDFLAGS)

@@ -145,6 +145,7 @@ typedef struct {
 #define AUDIO_CHANNELS 2
 #define AUDIO_SAMPLE_RATE 44100
 #define AUDIO_SAMPLES_PER_FRAME (AUDIO_SAMPLE_RATE/VM_HZ)
+#define MAX_AUDIO_SAMPLES (1<<10) // This is ~17 seconds of audio
 
 typedef int16_t AUDIO_sample_t;
 typedef AUDIO_sample_t AUDIO_samples_t[AUDIO_CHANNELS];
@@ -162,7 +163,12 @@ typedef AUDIO_samples_t ARAM_t[AUDIO_SAMPLES_PER_FRAME];
 // that overlaps the clock would be reset if you didn't save the pulse
 // state between frames. Alternatively, this could be put into the
 // program's RAM, which is pretty messy and ugly.)
+//
+// The other big problem with this is that the size of the audio ROM
+// is huge for a reasonable amount of audio. On the other hand, these
+// samples would just be in the normal ROM anyways.
 
+// There are 7 bits of tone, because there are 88 piano keys.
 typedef uint16_t
 /* struct {
   unsigned tone:7;
@@ -185,12 +191,11 @@ typedef uint8_t
   unsigned volume:4;
   } */ SYNTH_noise_t;
 
-// XXX 255 samples, 4bits of "distance" on either side (0=center),
-// should there be something to scale the volume?
-typedef struct {
-  uint8_t num;
-  uint8_t bias;
-} SYNTH_sample_t;
+typedef uint16_t /* struct {
+ unsigned sample_no:10; // 2^10 different samples
+ unsigned volume_scale:2; // 00 = quarter, 01 = half, 01 = normal, 11 = doubled
+ unsigned bias:4; // (bias-7)/7 = position
+} */ SYNTH_sample_t;
 
 typedef struct {
   // Soprano + Alto
