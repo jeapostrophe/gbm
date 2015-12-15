@@ -1,10 +1,12 @@
 #lang racket/base
 (require racket/format
+         racket/match
          racket/string
          racket/list)
 
-;; XXX Compile to C structure definition and Racket code to construct
-;; & emit
+;; XXX Compile to Racket code to construct & emit
+(module+ main
+  (displayln "#include \"bitfields.h\""))
 
 (struct bits (count))
 (define (bits-for x)
@@ -39,15 +41,13 @@
 
 (define (constant-set-dynamic id vals)
   (show-bits-for id vals)
+  (define ty (type-for (bits-for vals)))
   (displayln
-   (~a "typedef enum { "
+   (~a "typedef " ty " " (Cify id) ";\n"
        (string-append*
-        (add-between
-         (map (λ (val) (Cify id val)) vals)
-         ", "))
-       " } "
-       (Cify id)
-       ";\n")))
+        (for/list ([v (in-list vals)]
+                   [i (in-naturals)])
+          (~a "#define " (Cify id v) " " i "\n"))))))
 
 (define-syntax-rule (define-constant-set id (val ...))
   (begin (define id '(val ...))
@@ -57,7 +57,27 @@
   (begin (define id (bits bits-c))
          (module+ main
            (show-bits-for 'id id)
-           (displayln (~a)))))
+           (displayln (~a "typedef " (type-for (bits-for id)) " " (Cify 'id) ";\n")))))
+
+(define (type-for bits)
+  (cond
+    [(<= bits 8) "uint8_t"]
+    [(<= bits 16) "uint16_t"]
+    [else "uint32_t"]))
+
+(define (display-c-bitfield-accessors big prefix fields)
+  (displayln
+   (~a "typedef uint16_t " big ";\n"
+       (string-append*
+        (let ()
+          (define start 0)
+          (for/list ([f (in-list fields)])
+          (match-define (list* kind name bits maybe-default) f)
+          (begin0
+              (~a "static inline " kind " " (Cify prefix name) "(uint32_t y) {"
+              " return bf_get(y, " start ", " bits "); "
+              "}\n")
+            (set! start (+ start bits)))))))))
 
 (define op '())
 (define op-printer '())
@@ -76,14 +96,11 @@
                                (bits-for kind)
                                ...))
                         " bits"))
-                   (displayln
-                    (~a "typedef struct {\n"
-                        "  unsigned code:" opcode-bits "; // = " (Cify 'op 'id) "\n"
-                        (~a "  unsigned " 'f ":" (bits-for kind) ";\n")
-                        ...
-                        "} "
-                        (Cify 'op 'id 't)
-                        ";\n"))))))))
+                   (display-c-bitfield-accessors
+                    (Cify 'op 'id 't) (Cify 'op 'id)
+                    (list (list (Cify 'op) 'code opcode-bits (Cify 'op 'id))
+                          (list (Cify 'kind) 'f (bits-for kind))
+                          ...))))))))
 
 ;; There are 8 registers
 ;; Each register is 32 bits
@@ -145,23 +162,24 @@
 (define-op (cmp [cmp-code mode] [sreg lhs] [sreg rhs]))
 
 ;; Control
+(define-constant-set control-cond (always conditional))
 (define-constant-set control-mode (call jump))
-(define-op (control [control-mode mode] [sreg addr]))
+(define-op (control [control-cond cond] [control-mode mode] [sreg addr]))
 (define-op (return))
 (define-op (halt))
 
 ;; Immediate Control
-;; You can jump within an (+/-) 11-bit range of the PC (the
+;; You can jump within an (+/-) 9-bit range of the PC (the
 ;; bottom bit is always assumed to be 0, because instructions are 16-bit
 ;; aligned)
 (define-constant control-imm
-  #:bits 11)
-(define-op (control-imm [control-imm offset]))
+  #:bits 9)
+(define-op (control-imm [control-cond cond] [control-mode mode] [control-imm offset]))
 
 ;; You can call in an "extended" way with:
-;; 0000 0<11 bits> <16 bits>
+;; 0000 000<9 bits> <16 bits>
 ;; where the bottom 16 bits are from the next instruction
-(define-op (control-immx [control-imm offset]))
+(define-op (control-immx [control-cond cond] [control-mode mode] [control-imm offset]))
 
 ;; Move
 (define-constant load-imm
@@ -218,19 +236,9 @@
   (constant-set-dynamic 'op op)
   (for ([i (in-list op-printer)])
     (i (bits-for op)))
-  (displayln
-   (~a "typedef struct {\n"
-       "  unsigned code:" (bits-for op) ";\n"
-       "  unsigned rest:" (- 16 (bits-for op)) ";\n"
-       "} OP_T;\n"))
-  (displayln
-   (~a "void bytecode_switch_template ( OP_T op ) {\n"
-       "  switch ( op.code ) {\n"
-       (string-append*
-        (for/list ([o (in-list op)])
-          (~a "    case " (Cify 'op o) ":\n"
-              "      break;\n")))
-       "  }\n"
-       "}\n")))
+  (display-c-bitfield-accessors
+   (Cify 'op 't) (Cify 'op)
+   (list (list (Cify 'op) 'code (bits-for op))
+         (list "uint16_t" 'rest (- 16 (bits-for op))))))
 
 ;;;;;;;;;
