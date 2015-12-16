@@ -33,6 +33,9 @@ typedef bufset *MEM;
 // XXX intel
 #include "emmintrin.h"
 #include "immintrin.h"
+#include <stdio.h>
+
+#define dprintf(...)
 
 void vm_run( PROM prom,
              MEM rom, MEM ram, MEM stack, MEM sys, MEM debug,
@@ -45,8 +48,11 @@ void vm_run( PROM prom,
 
   while (1) {
     OP_T op = prom[pc];
+    dprintf("prom[%u] = %u\n", pc, op);
+    dprintf("OP_CODE = %u\n", OP_CODE(op));
     switch ( OP_CODE(op) ) {
     case OP_ADD:
+      dprintf("ADD\n");
       switch ( OP_ADD_MODE(op) ) {
       case   ARITH_MODE_INT: rs[OP_ADD_DST(op)].ui32 = rs[OP_ADD_LHS(op)].ui32 + rs[OP_ADD_RHS(op)].ui32; break;
       case ARITH_MODE_FLOAT: rs[OP_ADD_DST(op)].f32  = rs[OP_ADD_LHS(op)].f32  + rs[OP_ADD_RHS(op)].f32;  break;
@@ -54,6 +60,7 @@ void vm_run( PROM prom,
       pc++;
       break;
     case OP_SUB:
+      dprintf("SUB\n");
       switch ( OP_SUB_MODE(op) ) {
       case   ARITH_MODE_INT: rs[OP_SUB_DST(op)].ui32 = rs[OP_SUB_LHS(op)].ui32 - rs[OP_SUB_RHS(op)].ui32; break;
       case ARITH_MODE_FLOAT: rs[OP_SUB_DST(op)].f32  = rs[OP_SUB_LHS(op)].f32  - rs[OP_SUB_RHS(op)].f32;  break;
@@ -61,6 +68,7 @@ void vm_run( PROM prom,
       pc++;
       break;
     case OP_MUL:
+      dprintf("MUL\n");
       switch ( OP_MUL_MODE(op) ) {
       case   ARITH_MODE_INT: rs[OP_MUL_DST(op)].ui32 = rs[OP_MUL_LHS(op)].ui32 * rs[OP_MUL_RHS(op)].ui32; break;
       case ARITH_MODE_FLOAT: rs[OP_MUL_DST(op)].f32  = rs[OP_MUL_LHS(op)].f32  * rs[OP_MUL_RHS(op)].f32;  break;
@@ -147,6 +155,7 @@ void vm_run( PROM prom,
       pc++;
       break;
     case OP_CMP:
+      dprintf("CMP(%u,%u,%u)\n", OP_CMP_LHS(op), OP_CMP_MODE(op), OP_CMP_RHS(op));
       switch ( OP_CMP_MODE(op) ) {
       case CMP_CODE_I_FALSE: status = 0; break;
       case    CMP_CODE_I_EQ: status = rs[OP_CMP_LHS(op)].ui32 == rs[OP_CMP_RHS(op)].ui32; break;
@@ -177,33 +186,43 @@ void vm_run( PROM prom,
       case   CMP_CODE_F_UNO: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32); break;
       case  CMP_CODE_F_TRUE: status = 1; break;
       }
+      dprintf("status = %u\n", status);
       pc++;
       break;
     case OP_CONTROL:
     case OP_CONTROL_IMM:
     case OP_CONTROL_IMMX:
       {
+        dprintf("CONTROL(%u), status = %u\n", OP_CONTROL_COND(op), status);
         uint8_t inst_size = ( OP_CODE(op) == OP_CONTROL_IMMX ) ? 2 : 1;
         if ( OP_CONTROL_COND(op) == CONTROL_COND_ALWAYS || status ) {
           if ( OP_CONTROL_MODE(op) == CONTROL_MODE_CALL ) {
+            dprintf("\tCALL\n");
             *(pc_stack++) = pc + inst_size;
           }
           if ( OP_CODE(op) == OP_CONTROL ) {
+            dprintf("\tDIR\n");
             pc = rs[OP_CONTROL_ADDR(op)].ui32;
           } else if ( OP_CODE(op) == OP_CONTROL_IMM ) {
+            dprintf("\tIMM: %u %u %d\n", pc, OP_CONTROL_IMM_OFFSET(op), OP_CONTROL_IMM_OFFSET(op) - 256);
             pc = pc + (OP_CONTROL_IMM_OFFSET(op) - 256);
           } else if ( OP_CODE(op) == OP_CONTROL_IMMX ) {
+            dprintf("\tIMMX\n");
             pc = (OP_CONTROL_IMM_OFFSET(op) << 16) + prom[pc+1];
           }
         } else {
+          dprintf("\tSKIP\n");
           pc = pc + inst_size;
         }
       }
+      dprintf("\tpc = %u\n", pc);
       break;
     case OP_RETURN:
       pc = *(pc_stack--);
       break;
     case OP_HALT:
+      dprintf("HALT\n");
+      dprintf("\tr2 = %u\n", rs[2].ui32);
       return;
       break;
     case OP_LOAD_IMM:
@@ -251,7 +270,7 @@ void vm_run( PROM prom,
       break;
     case OP_MEM_FENCE:
       // XXX intel
-      _mm_mfence();
+      // _mm_mfence();
       pc++;
       break;
     case OP_BUF_SET:
@@ -312,6 +331,11 @@ void vm_run( PROM prom,
 }
 
 #include <stdio.h>
+#include <sys/mman.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <stdlib.h>
+#include <time.h>
 
 int main ( int argc, char **argv ) {
   printf("reg    = %lu\n", sizeof(reg));
@@ -319,5 +343,41 @@ int main ( int argc, char **argv ) {
   printf("buf    = %lu\n", sizeof(buf));
   printf("bufset = %lu\n", sizeof(bufset));
   printf("OP_T   = %lu\n", sizeof(OP_T));
+
+  const char *bin_path = argv[1];
+  FILE *bin_f = fopen(bin_path, "r");
+  if (bin_f == NULL) {
+    return -1;
+  }
+  int bin_fd = fileno(bin_f);
+
+  struct stat bin_st;
+  fstat(bin_fd, &bin_st);
+  int bin_len = bin_st.st_size;
+
+  void *bin_ptr =
+    mmap(NULL, bin_len, PROT_EXEC | PROT_READ, MAP_FILE | MAP_PRIVATE, bin_fd, 0);
+  if (bin_ptr == MAP_FAILED) {
+    return -1;
+  }
+
+  clock_t before = clock();
+  const unsigned int N = 10000;
+  for (int i = 0; i < N; i++ ) 
+    vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+  clock_t after = clock();
+  clock_t span = after - before;
+
+  double fspan = span;
+  double fcps = CLOCKS_PER_SEC;
+  double fspan_ms = fspan/fcps * 1000.0;
+
+  printf("N(%u) in (%fms), 1 in (%fms)\n", N, fspan_ms, fspan_ms / ((double) N));
+
+  
+  if ( munmap(bin_ptr, bin_len) == -1 ) {
+    return -1;
+  }
+  fclose(bin_f);
   return 0;
 }

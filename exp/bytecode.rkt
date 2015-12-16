@@ -4,7 +4,22 @@
          racket/string
          racket/list)
 
-;; XXX Compile to Racket code to construct & emit
+(define ENCODER (make-hasheq))
+(define KIND-ENCODER (make-hasheq))
+
+(define (make-constant-set-encoder vs)
+  (define bs (bits-for vs))
+  (λ (val)
+    (or
+     (for/or ([v (in-list vs)]
+              [i (in-naturals)])
+       (and (eq? val v)
+            (cons i bs)))
+     (error 'bytecode-write "Unknown value: ~v" val))))
+(define (make-constant-encoder bs)
+  (λ (i)
+    (cons i (bits-count bs))))
+
 (module+ main
   (displayln "#include \"bitfields.h\""))
 
@@ -51,10 +66,12 @@
 
 (define-syntax-rule (define-constant-set id (val ...))
   (begin (define id '(val ...))
+         (hash-set! KIND-ENCODER 'id (make-constant-set-encoder id))
          (module+ main
            (constant-set-dynamic 'id id))))
 (define-syntax-rule (define-constant id #:bits bits-c)
   (begin (define id (bits bits-c))
+         (hash-set! KIND-ENCODER 'id (make-constant-encoder id))
          (module+ main
            (show-bits-for 'id id)
            (displayln (~a "typedef " (type-for (bits-for id)) " " (Cify 'id) ";\n")))))
@@ -70,37 +87,49 @@
    (~a "typedef uint16_t " big ";\n"
        (string-append*
         (let ()
-          (define start 0)
-          (for/list ([f (in-list fields)])
-          (match-define (list* kind name bits maybe-default) f)
-          (begin0
-              (~a "static inline " kind " " (Cify prefix name) "(uint32_t y) {"
-              " return bf_get(y, " start ", " bits "); "
-              "}\n")
-            (set! start (+ start bits)))))))))
+          (define start
+            (- 16
+               (apply + (map third fields))))
+          (for/list ([f (in-list (reverse fields))])
+            (match-define (list* kind name bits maybe-default) f)
+            (begin0
+                (~a "static inline " kind " " (Cify prefix name) "(uint32_t y) {"
+                    " return bf_get(y, " start ", " bits "); "
+                    "}\n")
+              (set! start (+ start bits)))))))))
 
 (define op '())
 (define op-printer '())
+(define op-definer '())
 (define-syntax-rule (define-op (id [kind f] ...))
-  (begin (set! op (append op '(id)))
-         (set! op-printer
-               (append
-                op-printer
-                (list
-                 (λ (opcode-bits)
-                   (displayln
-                    (~a "// " (~a #:min-width 12 'id)
-                        " = "
-                        (~a #:min-width 2
-                            (+ opcode-bits
-                               (bits-for kind)
-                               ...))
-                        " bits"))
-                   (display-c-bitfield-accessors
-                    (Cify 'op 'id 't) (Cify 'op 'id)
-                    (list (list (Cify 'op) 'code opcode-bits (Cify 'op 'id))
-                          (list (Cify 'kind) 'f (bits-for kind))
-                          ...))))))))
+  (let ([my-id (length op)])
+    (set! op (append op '(id)))
+    (set! op-printer
+          (append
+           op-printer
+           (list
+            (λ (opcode-bits)
+              (displayln
+               (~a "// " (~a #:min-width 12 'id)
+                   " = "
+                   (~a #:min-width 2
+                       (+ opcode-bits
+                          (bits-for kind)
+                          ...))
+                   " bits"))
+              (display-c-bitfield-accessors
+               (Cify 'op 'id 't) (Cify 'op 'id)
+               (list (list (Cify 'op) 'code opcode-bits (Cify 'op 'id))
+                     (list (Cify 'kind) 'f (bits-for kind))
+                     ...))))))
+    (set! op-definer
+          (cons (λ (opcode-bits)
+                  (hash-set! ENCODER 'id
+                             (make-encoder
+                              (vector my-id
+                                      opcode-bits
+                                      (list 'kind ...)))))
+                op-definer))))
 
 ;; There are 8 registers
 ;; Each register is 32 bits
@@ -242,3 +271,45 @@
          (list "uint16_t" 'rest (- 16 (bits-for op))))))
 
 ;;;;;;;;;
+
+(define (combine-bits l-of-v*bc)
+  (define-values (b tbc)
+    (for/fold ([b 0] [tbc 0])
+              ([v*bc (in-list l-of-v*bc)])
+      (match-define (cons v bc) v*bc)
+      (values (+ (arithmetic-shift b bc) v)
+              (+ tbc bc))))
+  (arithmetic-shift b (- 16 tbc)))
+
+(define (make-encoder v)
+  (match-define (vector opcode opcode-bits fields) v)
+  (λ (i)
+    (combine-bits
+     (cons
+      (cons opcode opcode-bits)
+      (for/list ([f (in-list fields)]
+                 [i (in-list (rest i))])
+        ((hash-ref KIND-ENCODER f) i))))))
+
+(for ([i (in-list op-definer)])
+  (i (bits-for op)))
+
+(define (instruction->uint16 i)
+  (match i
+    [(? number? n) n]
+    [(cons instr _)
+     ((hash-ref ENCODER instr) i)]))
+
+(define (bytecode-write is)
+  (for ([i (in-list is)])
+    (define n (instruction->uint16 i))
+    (eprintf
+     (~a (~r n #:min-width 5) " = " (~r n #:base 2 #:min-width 16 #:pad-string "0")
+         " = " i "\n"))
+    (display (integer->integer-bytes n 2 #f))))
+
+(define (bytecode-read bs)
+  '(XXX))
+
+(provide bytecode-write
+         bytecode-read)

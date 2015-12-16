@@ -11,6 +11,6 @@
 #define BF_SET(y, x, start, len)    \
     ( y= ((y) &~ BF_MASK(start, len)) | BF_PREP(x, start, len) )
 
-static inline uint32_t bf_get(uint32_t y, uint32_t shift, uint32_t len) {    
-    return (y>>shift) & BIT_MASK(len);
+static inline uint16_t bf_get(uint16_t y, uint8_t shift, uint8_t len) {
+  return (y>>shift) & BIT_MASK(len);
 }
