@@ -2,7 +2,7 @@ CFLAGS = -std=gnu99
 
 .PHONY: fib fib2 asm all fib3 fib4 fib5 vm vm2
 
-all: fib2 fib4 fib3 fib5 vm vm2
+all: fib2 fib4 fib3 fib5 fib6 vm vm2
 
 fib3:
 	time racket -t fib3.rkt
@@ -55,3 +55,10 @@ vm2:
 	gobjcopy -O binary vm2.o vm2.bin
 	ls -l vm2.o vm2.bin
 	time ./fib-launch vm2.bin
+
+fib6: fib6.ll
+	/usr/local/opt/llvm/bin/llc -O3 -enable-tbaa fib6.ll
+	as fib6.s -o fib6.o
+	gobjcopy -O binary fib6.o fib6.bin
+	ls -l fib6.bin
+	time ./fib-launch fib6.bin

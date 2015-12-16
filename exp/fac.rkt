@@ -10,7 +10,7 @@
     (λ ()
       (bytecode-write
        `((load-imm r0 0) ;; 0
-         (load-imm r1 5) ;; 1
+         (load-imm r1 12) ;; 1
          (load-imm r2 1) ;; 2
          (load-imm r3 1) ;; 3
          (cmp i-eq r0 r1) ;; 4
