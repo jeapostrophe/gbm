@@ -1,6 +1,19 @@
 #include <stdint.h>
 #include "bytecode.h"
 
+#include <math.h>
+#include <string.h>
+// XXX intel
+#include "emmintrin.h"
+#include "immintrin.h"
+#include <stdio.h>
+
+#include <sys/mman.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <stdlib.h>
+#include <time.h>
+
 typedef union {
   uint8_t  ui8;
   uint16_t ui16;
@@ -11,15 +24,11 @@ typedef union {
   float    f32;
 } reg;
 
-typedef reg regset[8];
-
 // XXX intel -> ymm
 typedef union {
-  regset   all;
   uint8_t  b8[32];
   uint16_t b16[16];
   uint32_t b32[8];
-  float    f32[8];
 } buf;
 
 typedef buf bufset[4];
@@ -27,13 +36,6 @@ typedef buf bufset[4];
 typedef OP_T PROM[];
 
 typedef bufset *MEM;
-
-#include <math.h>
-#include <string.h>
-// XXX intel
-#include "emmintrin.h"
-#include "immintrin.h"
-#include <stdio.h>
 
 #define dprintf(...)
 
@@ -43,7 +45,7 @@ void vm_run( PROM prom,
   uint32_t pc = ipc;
   uint8_t status = 0;
   bufset bs = { 0 };
-  regset rs = { 0 };
+  reg rs[8] = { 0 };
   uint32_t isp = 0;
 
   while (1) {
@@ -310,7 +312,7 @@ void vm_run( PROM prom,
         }
         memcpy(dst, src, sizeof(buf));
         pc++;
-      }
+        }
       break;
     case OP_STACK_MOV:
       switch ( OP_STACK_MOV_DIR(op) ) {
@@ -330,18 +332,11 @@ void vm_run( PROM prom,
   }
 }
 
-#include <stdio.h>
-#include <sys/mman.h>
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <stdlib.h>
-#include <time.h>
+extern void vm2_run( PROM prom,  uint32_t ipc );
 
 int main ( int argc, char **argv ) {
   printf("reg    = %lu\n", sizeof(reg));
-  printf("regset = %lu\n", sizeof(regset));
   printf("buf    = %lu\n", sizeof(buf));
-  printf("bufset = %lu\n", sizeof(bufset));
   printf("OP_T   = %lu\n", sizeof(OP_T));
 
   const char *bin_path = argv[1];
@@ -363,8 +358,10 @@ int main ( int argc, char **argv ) {
 
   clock_t before = clock();
   const unsigned int N = 10000;
-  for (int i = 0; i < N; i++ ) 
-    vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+  for (int i = 0; i < N; i++ ) {
+    // vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+    vm2_run( bin_ptr, 0 );
+  }
   clock_t after = clock();
   clock_t span = after - before;
 

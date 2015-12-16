@@ -1,4 +1,4 @@
-CFLAGS=-Werror -pedantic -std=c99 -O3 `pkg-config --cflags glfw3`
+CFLAGS=-Werror -pedantic -std=c99 -O3 -mavx `pkg-config --cflags glfw3`
 LDFLAGS=`pkg-config --static --libs glfw3` -llightning -lportaudio
 TARGETS=gbm vm2
 
@@ -19,10 +19,16 @@ fac.bin: fac.rkt bytecode.rkt
 bytecode.h: bytecode.rkt
 	rk bytecode.rkt > bytecode.h
 
-bytecode-vm: bytecode-vm.c bytecode.h
-	cc $(CFLAGS) bytecode-vm.c -o bytecode-vm
+bytecode-vm: bytecode-vm.c bytecode.h bytecode-vm2.o
+	cc $(CFLAGS) bytecode-vm.c bytecode-vm2.o -o bytecode-vm
 	cc $(CFLAGS) -S bytecode-vm.c -o bytecode-vm.s
 	cc $(CFLAGS) -S -emit-llvm bytecode-vm.c -o bytecode-vm.ll
+
+bytecode-vm2.s: bytecode-vm2.ll
+	/usr/local/opt/llvm/bin/llc -O3 $^
+
+bytecode-vm2.o: bytecode-vm2.s
+	as $^ -o $@
 
 gbm: gbm.o audio.o jit.o thread.o video.o vm.o
 	cc $(CFLAGS) -o $@ $^ $(LDFLAGS)
