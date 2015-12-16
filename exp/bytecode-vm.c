@@ -39,7 +39,7 @@ typedef bufset *MEM;
 
 #define dprintf(...)
 
-uint32_t vm_run( PROM prom,
+uint32_t vm_run( PROM prom, size_t prom_size,
                  MEM rom, MEM ram, MEM stack, MEM sys, MEM debug,
                  uint32_t ipc, uint32_t *pc_stack ) {
   uint32_t pc = ipc;
@@ -50,8 +50,10 @@ uint32_t vm_run( PROM prom,
 
   static void *ops[] = { &&vm_add, &&vm_sub, &&vm_mul, &&vm_div, &&vm_rem, &&vm_fprim, &&vm_shift, &&vm_bitwise, &&vm_conv, &&vm_cmp, &&vm_control, &&vm_return, &&vm_halt, &&vm_control_imm, &&vm_control_immx, &&vm_load_imm, &&vm_load_immx, &&vm_select, &&vm_buf_mem, &&vm_mem_fence, &&vm_buf_set, &&vm_buf_read, &&vm_buf_all, &&vm_stack_mov };
   OP_T op;
-  
- #define VM_TOP { op = prom[pc++]; goto *(ops[OP_CODE(op)]); }
+
+#define VM_TOP { op = prom[pc++]; goto *(ops[OP_CODE(op)]); }
+
+  VM_TOP;
 
  vm_add:
     dprintf("ADD\n");
@@ -314,6 +316,8 @@ uint32_t vm_run( PROM prom,
         isp = rs[OP_STACK_MOV_DST(op)].ui32;
         VM_TOP;
       }
+
+      return 0;
 }
 
 extern uint32_t vm2_run( PROM prom,  uint32_t ipc );
@@ -501,12 +505,13 @@ int main ( int argc, char **argv ) {
   if (bin_ptr == MAP_FAILED) {
     return -1;
   }
+  size_t prom_size = bin_len / 2;
 
   clock_t before = clock();
   const unsigned int N = 10000;
   volatile uint32_t r;
   for (int i = 0; i < N; i++ ) {
-    r = vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+    r = vm_run( bin_ptr, prom_size, NULL, NULL, NULL, NULL, NULL, 0, NULL );
     // r = vm2_run( bin_ptr, 0 );
     // r = vm3_run( bin_ptr, 0 );
     // r = vm4_run( bin_ptr, 0 );
