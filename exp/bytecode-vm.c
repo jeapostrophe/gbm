@@ -332,7 +332,7 @@ uint32_t vm_run( PROM prom,
   }
 }
 
-extern void vm2_run( PROM prom,  uint32_t ipc );
+extern uint32_t vm2_run( PROM prom,  uint32_t ipc );
 
 uint32_t vm3_run( PROM prom, uint32_t ipc ) {
   uint32_t pc = ipc;
@@ -494,6 +494,8 @@ uint32_t vm3_run( PROM prom, uint32_t ipc ) {
   }
 }
 
+extern uint32_t vm4_run( PROM prom,  uint32_t ipc );
+
 int main ( int argc, char **argv ) {
   printf("reg    = %lu\n", sizeof(reg));
   printf("buf    = %lu\n", sizeof(buf));
@@ -521,8 +523,9 @@ int main ( int argc, char **argv ) {
   volatile uint32_t r;
   for (int i = 0; i < N; i++ ) {
     r = vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
-    // vm2_run( bin_ptr, 0 );
+    // r = vm2_run( bin_ptr, 0 );
     // r = vm3_run( bin_ptr, 0 );
+    // r = vm4_run( bin_ptr, 0 );
   }
   clock_t after = clock();
   clock_t span = after - before;
