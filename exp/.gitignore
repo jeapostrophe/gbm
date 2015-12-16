@@ -1,2 +1,9 @@
 /gbm
 *.o
+/bytecode.h
+/bytecode-vm
+/bytecode-vm.ll
+/bytecode-vm.s
+/bytecode-vm4.s
+/fac.bin
+/vm2

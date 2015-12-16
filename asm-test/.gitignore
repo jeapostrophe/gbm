@@ -4,3 +4,7 @@
 /fib-launch
 /fib.bin
 *.o
+*.bin
+*.so
+*.bc
+/fib6.s    
