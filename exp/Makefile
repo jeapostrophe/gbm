@@ -1,4 +1,4 @@
-CFLAGS=-Werror -pedantic -std=c99 -O3 -mavx `pkg-config --cflags glfw3`
+CFLAGS=-Werror -std=gnu99 -O3 -mavx `pkg-config --cflags glfw3`
 LDFLAGS=`pkg-config --static --libs glfw3` -llightning -lportaudio
 TARGETS=gbm vm2
 

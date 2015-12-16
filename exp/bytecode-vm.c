@@ -40,206 +40,219 @@ typedef bufset *MEM;
 #define dprintf(...)
 
 uint32_t vm_run( PROM prom,
-             MEM rom, MEM ram, MEM stack, MEM sys, MEM debug,
-             uint32_t ipc, uint32_t *pc_stack ) {
+                 MEM rom, MEM ram, MEM stack, MEM sys, MEM debug,
+                 uint32_t ipc, uint32_t *pc_stack ) {
   uint32_t pc = ipc;
   uint8_t status = 0;
   bufset bs = { 0 };
   reg rs[8] = { 0 };
   uint32_t isp = 0;
 
-  while (1) {
-    OP_T op = prom[pc];
-    dprintf("prom[%u] = %u\n", pc, op);
-    dprintf("OP_CODE = %u\n", OP_CODE(op));
-    switch ( OP_CODE(op) ) {
-    case OP_ADD:
-      dprintf("ADD\n");
-      switch ( OP_ADD_MODE(op) ) {
-      case   ARITH_MODE_INT: rs[OP_ADD_DST(op)].ui32 = rs[OP_ADD_LHS(op)].ui32 + rs[OP_ADD_RHS(op)].ui32; break;
-      case ARITH_MODE_FLOAT: rs[OP_ADD_DST(op)].f32  = rs[OP_ADD_LHS(op)].f32  + rs[OP_ADD_RHS(op)].f32;  break;
-      }
-      pc++;
-      break;
-    case OP_SUB:
-      dprintf("SUB\n");
-      switch ( OP_SUB_MODE(op) ) {
-      case   ARITH_MODE_INT: rs[OP_SUB_DST(op)].ui32 = rs[OP_SUB_LHS(op)].ui32 - rs[OP_SUB_RHS(op)].ui32; break;
-      case ARITH_MODE_FLOAT: rs[OP_SUB_DST(op)].f32  = rs[OP_SUB_LHS(op)].f32  - rs[OP_SUB_RHS(op)].f32;  break;
-      }
-      pc++;
-      break;
-    case OP_MUL:
-      dprintf("MUL\n");
-      switch ( OP_MUL_MODE(op) ) {
-      case   ARITH_MODE_INT: rs[OP_MUL_DST(op)].ui32 = rs[OP_MUL_LHS(op)].ui32 * rs[OP_MUL_RHS(op)].ui32; break;
-      case ARITH_MODE_FLOAT: rs[OP_MUL_DST(op)].f32  = rs[OP_MUL_LHS(op)].f32  * rs[OP_MUL_RHS(op)].f32;  break;
-      }
-      pc++;
-      break;
-    case OP_DIV:
-      switch ( OP_DIV_MODE(op) ) {
-      case  DIV_MODE_UINT: rs[OP_DIV_DST(op)].ui32 = rs[OP_DIV_LHS(op)].ui32 / rs[OP_DIV_RHS(op)].ui32; break;
-      case  DIV_MODE_SINT: rs[OP_DIV_DST(op)].si32 = rs[OP_DIV_LHS(op)].si32 / rs[OP_DIV_RHS(op)].si32; break;
-      case DIV_MODE_FLOAT: rs[OP_DIV_DST(op)].f32  = rs[OP_DIV_LHS(op)].f32  / rs[OP_DIV_RHS(op)].f32;  break;
-      }
-      pc++;
-      break;
-    case OP_REM:
-      switch ( OP_REM_MODE(op) ) {
-      case  DIV_MODE_UINT: rs[OP_REM_DST(op)].ui32 = rs[OP_REM_LHS(op)].ui32 % rs[OP_REM_RHS(op)].ui32; break;
-      case  DIV_MODE_SINT: rs[OP_REM_DST(op)].si32 = rs[OP_REM_LHS(op)].si32 % rs[OP_REM_RHS(op)].si32; break;
-      case DIV_MODE_FLOAT: rs[OP_REM_DST(op)].f32  = fmodf( rs[OP_REM_LHS(op)].f32, rs[OP_REM_RHS(op)].f32 ); break;
-      }
-      pc++;
-      break;
-    case OP_FPRIM:
-      switch ( OP_FPRIM_MODE(op) ) {
-      case  FPRIM_MODE_SQRT: rs[OP_FPRIM_DST(op)].f32 = sqrtf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case   FPRIM_MODE_SIN: rs[OP_FPRIM_DST(op)].f32 = sinf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case   FPRIM_MODE_COS: rs[OP_FPRIM_DST(op)].f32 = cosf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case   FPRIM_MODE_EXP: rs[OP_FPRIM_DST(op)].f32 = expf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case  FPRIM_MODE_EXP2: rs[OP_FPRIM_DST(op)].f32 = exp2f( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case   FPRIM_MODE_LOG: rs[OP_FPRIM_DST(op)].f32 = logf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case FPRIM_MODE_LOG10: rs[OP_FPRIM_DST(op)].f32 = log10f( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case  FPRIM_MODE_LOG2: rs[OP_FPRIM_DST(op)].f32 = log2f( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case   FPRIM_MODE_ABS: rs[OP_FPRIM_DST(op)].f32 = fabs( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case FPRIM_MODE_FLOOR: rs[OP_FPRIM_DST(op)].f32 = floorf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case  FPRIM_MODE_CEIL: rs[OP_FPRIM_DST(op)].f32 = ceilf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case FPRIM_MODE_TRUNC: rs[OP_FPRIM_DST(op)].f32 = truncf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case  FPRIM_MODE_RINT: rs[OP_FPRIM_DST(op)].f32 = rintf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case FPRIM_MODE_NEARBYINT: rs[OP_FPRIM_DST(op)].f32 = nearbyintf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      case FPRIM_MODE_ROUND: rs[OP_FPRIM_DST(op)].f32 = roundf( rs[OP_FPRIM_SRC(op)].f32 ); break;
-      }
-      pc++;
-      break;
-    case OP_SHIFT:
-      switch ( OP_SHIFT_MODE(op) ) {
-      case             SHIFT_MODE_LEFT: rs[OP_SHIFT_DST(op)].ui32 = rs[OP_SHIFT_LHS(op)].ui32 << rs[OP_SHIFT_RHS(op)].ui32; break;
-      case    SHIFT_MODE_RIGHT_LOGICAL: rs[OP_SHIFT_DST(op)].ui32 = rs[OP_SHIFT_LHS(op)].ui32 >> rs[OP_SHIFT_RHS(op)].ui32; break;
-      case SHIFT_MODE_RIGHT_ARITHMETIC: rs[OP_SHIFT_DST(op)].si32 = rs[OP_SHIFT_LHS(op)].si32 >> rs[OP_SHIFT_RHS(op)].si32; break;
-      }
-      pc++;
-      break;
-    case OP_BITWISE:
-      switch ( OP_BITWISE_MODE(op) ) {
-      case  BIT_MODE_AND: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 & rs[OP_BITWISE_RHS(op)].ui32; break;
-      case  BIT_MODE_IOR: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 | rs[OP_BITWISE_RHS(op)].ui32; break;
-      case  BIT_MODE_XOR: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 ^ rs[OP_BITWISE_RHS(op)].ui32; break;
-      case BIT_MODE_NAND: rs[OP_BITWISE_DST(op)].ui32 = ~ ( rs[OP_BITWISE_LHS(op)].ui32 & rs[OP_BITWISE_RHS(op)].ui32 ); break;
-      }
-      pc++;
-      break;
-    case OP_CONV:
-      switch ( OP_CONV_TY(op) ) {
-      case    CONV_TY_U8_TO_U16: rs[OP_CONV_DST(op)].ui16 = rs[OP_CONV_SRC(op)].ui8; break;
-      case    CONV_TY_U8_TO_U32: rs[OP_CONV_DST(op)].ui32 = rs[OP_CONV_SRC(op)].ui8; break;
-      case  CONV_TY_U8_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui8; break;
-      case    CONV_TY_S8_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].si8; break;
-      case    CONV_TY_S8_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].si8; break;
-      case  CONV_TY_S8_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si8; break;
-      case    CONV_TY_U16_TO_U8: rs[OP_CONV_DST(op)].ui8  = rs[OP_CONV_SRC(op)].ui16; break;
-      case   CONV_TY_U16_TO_U32: rs[OP_CONV_DST(op)].ui32 = rs[OP_CONV_SRC(op)].ui16; break;
-      case CONV_TY_U16_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui16; break;
-      case    CONV_TY_S16_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].si16; break;
-      case   CONV_TY_S16_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].si16; break;
-      case CONV_TY_S16_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si16; break;
-      case    CONV_TY_U32_TO_U8: rs[OP_CONV_DST(op)].ui8  = rs[OP_CONV_SRC(op)].ui32; break;
-      case   CONV_TY_U32_TO_U16: rs[OP_CONV_DST(op)].ui16 = rs[OP_CONV_SRC(op)].ui32; break;
-      case CONV_TY_U32_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui32; break;
-      case    CONV_TY_S32_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].si32; break;
-      case   CONV_TY_S32_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].si32; break;
-      case CONV_TY_S32_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si32; break;
-      case  CONV_TY_FLOAT_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].f32; break;
-      case CONV_TY_FLOAT_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].f32; break;
-      case CONV_TY_FLOAT_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].f32; break;
-      }
-      pc++;
-      break;
-    case OP_CMP:
-      dprintf("CMP(%u,%u,%u)\n", OP_CMP_LHS(op), OP_CMP_MODE(op), OP_CMP_RHS(op));
-      switch ( OP_CMP_MODE(op) ) {
-      case CMP_CODE_I_FALSE: status = 0; break;
-      case    CMP_CODE_I_EQ: status = rs[OP_CMP_LHS(op)].ui32 == rs[OP_CMP_RHS(op)].ui32; break;
-      case    CMP_CODE_I_NE: status = rs[OP_CMP_LHS(op)].ui32 != rs[OP_CMP_RHS(op)].ui32; break;
-      case   CMP_CODE_I_UGT: status = rs[OP_CMP_LHS(op)].ui32 >  rs[OP_CMP_RHS(op)].ui32; break;
-      case   CMP_CODE_I_UGE: status = rs[OP_CMP_LHS(op)].ui32 >= rs[OP_CMP_RHS(op)].ui32; break;
-      case   CMP_CODE_I_ULT: status = rs[OP_CMP_LHS(op)].ui32 <  rs[OP_CMP_RHS(op)].ui32; break;
-      case   CMP_CODE_I_ULE: status = rs[OP_CMP_LHS(op)].ui32 <= rs[OP_CMP_RHS(op)].ui32; break;
-      case   CMP_CODE_I_SGT: status = rs[OP_CMP_LHS(op)].si32 >  rs[OP_CMP_RHS(op)].si32; break;
-      case   CMP_CODE_I_SGE: status = rs[OP_CMP_LHS(op)].si32 >= rs[OP_CMP_RHS(op)].si32; break;
-      case   CMP_CODE_I_SLT: status = rs[OP_CMP_LHS(op)].si32 <  rs[OP_CMP_RHS(op)].si32; break;
-      case   CMP_CODE_I_SLE: status = rs[OP_CMP_LHS(op)].si32 <= rs[OP_CMP_RHS(op)].si32; break;
-      case  CMP_CODE_I_TRUE: status = 1; break;
-      case CMP_CODE_F_FALSE: status = 0; break;
-      case   CMP_CODE_F_OEQ: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 == rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_OGT: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 >  rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_OGE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 >= rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_OLT: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 <  rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_OLE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 <= rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_ONE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 != rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_ORD: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32); break;
-      case   CMP_CODE_F_UEQ: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 == rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_UGT: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 >  rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_UGE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 >= rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_ULT: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 <  rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_ULE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 <= rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_UNE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 != rs[OP_CMP_RHS(op)].f32; break;
-      case   CMP_CODE_F_UNO: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32); break;
-      case  CMP_CODE_F_TRUE: status = 1; break;
-      }
-      dprintf("status = %u\n", status);
-      pc++;
-      break;
-    case OP_CONTROL:
-    case OP_CONTROL_IMM:
-    case OP_CONTROL_IMMX:
-      {
-        dprintf("CONTROL(%u), status = %u\n", OP_CONTROL_COND(op), status);
-        uint8_t inst_size = ( OP_CODE(op) == OP_CONTROL_IMMX ) ? 2 : 1;
-        if ( OP_CONTROL_COND(op) == CONTROL_COND_ALWAYS || status ) {
-          if ( OP_CONTROL_MODE(op) == CONTROL_MODE_CALL ) {
-            dprintf("\tCALL\n");
-            *(pc_stack++) = pc + inst_size;
-          }
-          if ( OP_CODE(op) == OP_CONTROL ) {
-            dprintf("\tDIR\n");
-            pc = rs[OP_CONTROL_ADDR(op)].ui32;
-          } else if ( OP_CODE(op) == OP_CONTROL_IMM ) {
-            dprintf("\tIMM: %u %u %d\n", pc, OP_CONTROL_IMM_OFFSET(op), OP_CONTROL_IMM_OFFSET(op) - 256);
-            pc = pc + (OP_CONTROL_IMM_OFFSET(op) - 256);
-          } else if ( OP_CODE(op) == OP_CONTROL_IMMX ) {
-            dprintf("\tIMMX\n");
-            pc = (OP_CONTROL_IMM_OFFSET(op) << 16) + prom[pc+1];
-          }
-        } else {
-          dprintf("\tSKIP\n");
-          pc = pc + inst_size;
+  static void *ops[] = { &&vm_add, &&vm_sub, &&vm_mul, &&vm_div, &&vm_rem, &&vm_fprim, &&vm_shift, &&vm_bitwise, &&vm_conv, &&vm_cmp, &&vm_control, &&vm_return, &&vm_halt, &&vm_control_imm, &&vm_control_immx, &&vm_load_imm, &&vm_load_immx, &&vm_select, &&vm_buf_mem, &&vm_mem_fence, &&vm_buf_set, &&vm_buf_read, &&vm_buf_all, &&vm_stack_mov };
+  OP_T op;
+  
+ #define VM_TOP { op = prom[pc++]; goto *(ops[OP_CODE(op)]); }
+
+ vm_add:
+    dprintf("ADD\n");
+    switch ( OP_ADD_MODE(op) ) {
+    case   ARITH_MODE_INT: rs[OP_ADD_DST(op)].ui32 = rs[OP_ADD_LHS(op)].ui32 + rs[OP_ADD_RHS(op)].ui32; VM_TOP;
+    case ARITH_MODE_FLOAT: rs[OP_ADD_DST(op)].f32  = rs[OP_ADD_LHS(op)].f32  + rs[OP_ADD_RHS(op)].f32;  VM_TOP;
+    }
+
+ vm_sub:
+    dprintf("SUB\n");
+    switch ( OP_SUB_MODE(op) ) {
+    case   ARITH_MODE_INT: rs[OP_SUB_DST(op)].ui32 = rs[OP_SUB_LHS(op)].ui32 - rs[OP_SUB_RHS(op)].ui32; break;
+    case ARITH_MODE_FLOAT: rs[OP_SUB_DST(op)].f32  = rs[OP_SUB_LHS(op)].f32  - rs[OP_SUB_RHS(op)].f32;  break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_mul:
+    dprintf("MUL\n");
+    switch ( OP_MUL_MODE(op) ) {
+    case   ARITH_MODE_INT: rs[OP_MUL_DST(op)].ui32 = rs[OP_MUL_LHS(op)].ui32 * rs[OP_MUL_RHS(op)].ui32; break;
+    case ARITH_MODE_FLOAT: rs[OP_MUL_DST(op)].f32  = rs[OP_MUL_LHS(op)].f32  * rs[OP_MUL_RHS(op)].f32;  break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_div:
+    switch ( OP_DIV_MODE(op) ) {
+    case  DIV_MODE_UINT: rs[OP_DIV_DST(op)].ui32 = rs[OP_DIV_LHS(op)].ui32 / rs[OP_DIV_RHS(op)].ui32; break;
+    case  DIV_MODE_SINT: rs[OP_DIV_DST(op)].si32 = rs[OP_DIV_LHS(op)].si32 / rs[OP_DIV_RHS(op)].si32; break;
+    case DIV_MODE_FLOAT: rs[OP_DIV_DST(op)].f32  = rs[OP_DIV_LHS(op)].f32  / rs[OP_DIV_RHS(op)].f32;  break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_rem:
+    switch ( OP_REM_MODE(op) ) {
+    case  DIV_MODE_UINT: rs[OP_REM_DST(op)].ui32 = rs[OP_REM_LHS(op)].ui32 % rs[OP_REM_RHS(op)].ui32; break;
+    case  DIV_MODE_SINT: rs[OP_REM_DST(op)].si32 = rs[OP_REM_LHS(op)].si32 % rs[OP_REM_RHS(op)].si32; break;
+    case DIV_MODE_FLOAT: rs[OP_REM_DST(op)].f32  = fmodf( rs[OP_REM_LHS(op)].f32, rs[OP_REM_RHS(op)].f32 ); break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_fprim:
+    switch ( OP_FPRIM_MODE(op) ) {
+    case  FPRIM_MODE_SQRT: rs[OP_FPRIM_DST(op)].f32 = sqrtf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case   FPRIM_MODE_SIN: rs[OP_FPRIM_DST(op)].f32 = sinf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case   FPRIM_MODE_COS: rs[OP_FPRIM_DST(op)].f32 = cosf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case   FPRIM_MODE_EXP: rs[OP_FPRIM_DST(op)].f32 = expf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case  FPRIM_MODE_EXP2: rs[OP_FPRIM_DST(op)].f32 = exp2f( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case   FPRIM_MODE_LOG: rs[OP_FPRIM_DST(op)].f32 = logf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case FPRIM_MODE_LOG10: rs[OP_FPRIM_DST(op)].f32 = log10f( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case  FPRIM_MODE_LOG2: rs[OP_FPRIM_DST(op)].f32 = log2f( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case   FPRIM_MODE_ABS: rs[OP_FPRIM_DST(op)].f32 = fabs( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case FPRIM_MODE_FLOOR: rs[OP_FPRIM_DST(op)].f32 = floorf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case  FPRIM_MODE_CEIL: rs[OP_FPRIM_DST(op)].f32 = ceilf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case FPRIM_MODE_TRUNC: rs[OP_FPRIM_DST(op)].f32 = truncf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case  FPRIM_MODE_RINT: rs[OP_FPRIM_DST(op)].f32 = rintf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case FPRIM_MODE_NEARBYINT: rs[OP_FPRIM_DST(op)].f32 = nearbyintf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    case FPRIM_MODE_ROUND: rs[OP_FPRIM_DST(op)].f32 = roundf( rs[OP_FPRIM_SRC(op)].f32 ); break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_shift:
+    switch ( OP_SHIFT_MODE(op) ) {
+    case             SHIFT_MODE_LEFT: rs[OP_SHIFT_DST(op)].ui32 = rs[OP_SHIFT_LHS(op)].ui32 << rs[OP_SHIFT_RHS(op)].ui32; break;
+    case    SHIFT_MODE_RIGHT_LOGICAL: rs[OP_SHIFT_DST(op)].ui32 = rs[OP_SHIFT_LHS(op)].ui32 >> rs[OP_SHIFT_RHS(op)].ui32; break;
+    case SHIFT_MODE_RIGHT_ARITHMETIC: rs[OP_SHIFT_DST(op)].si32 = rs[OP_SHIFT_LHS(op)].si32 >> rs[OP_SHIFT_RHS(op)].si32; break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_bitwise:
+    switch ( OP_BITWISE_MODE(op) ) {
+    case  BIT_MODE_AND: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 & rs[OP_BITWISE_RHS(op)].ui32; break;
+    case  BIT_MODE_IOR: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 | rs[OP_BITWISE_RHS(op)].ui32; break;
+    case  BIT_MODE_XOR: rs[OP_BITWISE_DST(op)].ui32 = rs[OP_BITWISE_LHS(op)].ui32 ^ rs[OP_BITWISE_RHS(op)].ui32; break;
+    case BIT_MODE_NAND: rs[OP_BITWISE_DST(op)].ui32 = ~ ( rs[OP_BITWISE_LHS(op)].ui32 & rs[OP_BITWISE_RHS(op)].ui32 ); break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_conv:
+    switch ( OP_CONV_TY(op) ) {
+    case    CONV_TY_U8_TO_U16: rs[OP_CONV_DST(op)].ui16 = rs[OP_CONV_SRC(op)].ui8; break;
+    case    CONV_TY_U8_TO_U32: rs[OP_CONV_DST(op)].ui32 = rs[OP_CONV_SRC(op)].ui8; break;
+    case  CONV_TY_U8_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui8; break;
+    case    CONV_TY_S8_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].si8; break;
+    case    CONV_TY_S8_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].si8; break;
+    case  CONV_TY_S8_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si8; break;
+    case    CONV_TY_U16_TO_U8: rs[OP_CONV_DST(op)].ui8  = rs[OP_CONV_SRC(op)].ui16; break;
+    case   CONV_TY_U16_TO_U32: rs[OP_CONV_DST(op)].ui32 = rs[OP_CONV_SRC(op)].ui16; break;
+    case CONV_TY_U16_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui16; break;
+    case    CONV_TY_S16_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].si16; break;
+    case   CONV_TY_S16_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].si16; break;
+    case CONV_TY_S16_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si16; break;
+    case    CONV_TY_U32_TO_U8: rs[OP_CONV_DST(op)].ui8  = rs[OP_CONV_SRC(op)].ui32; break;
+    case   CONV_TY_U32_TO_U16: rs[OP_CONV_DST(op)].ui16 = rs[OP_CONV_SRC(op)].ui32; break;
+    case CONV_TY_U32_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].ui32; break;
+    case    CONV_TY_S32_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].si32; break;
+    case   CONV_TY_S32_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].si32; break;
+    case CONV_TY_S32_TO_FLOAT: rs[OP_CONV_DST(op)].f32  = rs[OP_CONV_SRC(op)].si32; break;
+    case  CONV_TY_FLOAT_TO_S8: rs[OP_CONV_DST(op)].si8  = rs[OP_CONV_SRC(op)].f32; break;
+    case CONV_TY_FLOAT_TO_S16: rs[OP_CONV_DST(op)].si16 = rs[OP_CONV_SRC(op)].f32; break;
+    case CONV_TY_FLOAT_TO_S32: rs[OP_CONV_DST(op)].si32 = rs[OP_CONV_SRC(op)].f32; break;
+    }
+    pc++;
+    goto vm_top;
+
+ vm_cmp:
+    dprintf("CMP(%u,%u,%u)\n", OP_CMP_LHS(op), OP_CMP_MODE(op), OP_CMP_RHS(op));
+    switch ( OP_CMP_MODE(op) ) {
+    case CMP_CODE_I_FALSE: status = 0; break;
+    case    CMP_CODE_I_EQ: status = rs[OP_CMP_LHS(op)].ui32 == rs[OP_CMP_RHS(op)].ui32; break;
+    case    CMP_CODE_I_NE: status = rs[OP_CMP_LHS(op)].ui32 != rs[OP_CMP_RHS(op)].ui32; break;
+    case   CMP_CODE_I_UGT: status = rs[OP_CMP_LHS(op)].ui32 >  rs[OP_CMP_RHS(op)].ui32; break;
+    case   CMP_CODE_I_UGE: status = rs[OP_CMP_LHS(op)].ui32 >= rs[OP_CMP_RHS(op)].ui32; break;
+    case   CMP_CODE_I_ULT: status = rs[OP_CMP_LHS(op)].ui32 <  rs[OP_CMP_RHS(op)].ui32; break;
+    case   CMP_CODE_I_ULE: status = rs[OP_CMP_LHS(op)].ui32 <= rs[OP_CMP_RHS(op)].ui32; break;
+    case   CMP_CODE_I_SGT: status = rs[OP_CMP_LHS(op)].si32 >  rs[OP_CMP_RHS(op)].si32; break;
+    case   CMP_CODE_I_SGE: status = rs[OP_CMP_LHS(op)].si32 >= rs[OP_CMP_RHS(op)].si32; break;
+    case   CMP_CODE_I_SLT: status = rs[OP_CMP_LHS(op)].si32 <  rs[OP_CMP_RHS(op)].si32; break;
+    case   CMP_CODE_I_SLE: status = rs[OP_CMP_LHS(op)].si32 <= rs[OP_CMP_RHS(op)].si32; break;
+    case  CMP_CODE_I_TRUE: status = 1; break;
+    case CMP_CODE_F_FALSE: status = 0; break;
+    case   CMP_CODE_F_OEQ: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 == rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_OGT: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 >  rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_OGE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 >= rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_OLT: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 <  rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_OLE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 <= rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_ONE: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32) && rs[OP_CMP_LHS(op)].f32 != rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_ORD: status = !isnan(rs[OP_CMP_LHS(op)].f32) && !isnan(rs[OP_CMP_RHS(op)].f32); break;
+    case   CMP_CODE_F_UEQ: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 == rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_UGT: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 >  rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_UGE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 >= rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_ULT: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 <  rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_ULE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 <= rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_UNE: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32) || rs[OP_CMP_LHS(op)].f32 != rs[OP_CMP_RHS(op)].f32; break;
+    case   CMP_CODE_F_UNO: status = isnan(rs[OP_CMP_LHS(op)].f32) || isnan(rs[OP_CMP_RHS(op)].f32); break;
+    case  CMP_CODE_F_TRUE: status = 1; break;
+    }
+    dprintf("status = %u\n", status);
+    pc++;
+    goto vm_top;
+
+ vm_control:
+ vm_control_imm:
+ vm_control_immx:
+    {
+      dprintf("CONTROL(%u), status = %u\n", OP_CONTROL_COND(op), status);
+      uint8_t inst_size = ( OP_CODE(op) == OP_CONTROL_IMMX ) ? 2 : 1;
+      if ( OP_CONTROL_COND(op) == CONTROL_COND_ALWAYS || status ) {
+        if ( OP_CONTROL_MODE(op) == CONTROL_MODE_CALL ) {
+          dprintf("\tCALL\n");
+          *(pc_stack++) = pc + inst_size;
         }
+        if ( OP_CODE(op) == OP_CONTROL ) {
+          dprintf("\tDIR\n");
+          pc = rs[OP_CONTROL_ADDR(op)].ui32;
+        } else if ( OP_CODE(op) == OP_CONTROL_IMM ) {
+          dprintf("\tIMM: %u %u %d\n", pc, OP_CONTROL_IMM_OFFSET(op), OP_CONTROL_IMM_OFFSET(op) - 256);
+          pc = pc + (OP_CONTROL_IMM_OFFSET(op) - 256);
+        } else if ( OP_CODE(op) == OP_CONTROL_IMMX ) {
+          dprintf("\tIMMX\n");
+          pc = (OP_CONTROL_IMM_OFFSET(op) << 16) + prom[pc+1];
+        }
+      } else {
+        dprintf("\tSKIP\n");
+        pc = pc + inst_size;
       }
-      dprintf("\tpc = %u\n", pc);
-      break;
-    case OP_RETURN:
+    }
+    dprintf("\tpc = %u\n", pc);
+    goto vm_top;
+
+ vm_return:
       pc = *(pc_stack--);
-      break;
-    case OP_HALT:
+      goto vm_top;
+
+ vm_halt:
       dprintf("HALT\n");
       dprintf("\tr2 = %u\n", rs[2].ui32);
       return rs[2].ui32;
-      break;
-    case OP_LOAD_IMM:
+
+ vm_load_imm:
       rs[OP_LOAD_IMM_DST(op)].ui32 = OP_LOAD_IMM_VAL(op);
       pc++;
-      break;
-    case OP_LOAD_IMMX:
+      goto vm_top;
+
+ vm_load_immx:
       rs[OP_LOAD_IMMX_DST(op)].ui32 = (OP_LOAD_IMMX_HI(op) << 16) + prom[pc+1];
       pc += 2;
-      break;
-    case OP_SELECT:
+      goto vm_top;
+
+ vm_select:
       rs[OP_SELECT_DST(op)].ui32 = status ? rs[OP_SELECT_X(op)].ui32 : rs[OP_SELECT_Y(op)].ui32;
       pc++;
-      break;
-    case OP_BUF_MEM:
+      goto vm_top;
+
+ vm_buf_mem:
       {
         MEM space;
         switch ( OP_BUF_MEM_SRC(op) ) {
@@ -269,13 +282,15 @@ uint32_t vm_run( PROM prom,
         //       -> _mm256_stream_si256
         pc++;
       }
-      break;
-    case OP_MEM_FENCE:
+      goto vm_top;
+
+ vm_mem_fence:
       // XXX intel
       // _mm_mfence();
       pc++;
-      break;
-    case OP_BUF_SET:
+      goto vm_top;
+
+ vm_buf_set:
       if ( bf_get( OP_BUF_SET_IDX(op), 5, 1 ) == 1 ) { // 1-byte
         uint8_t target = bf_get( OP_BUF_SET_IDX(op), 0, 5 );
         bs[OP_BUF_SET_DST(op)].b8[target] = rs[OP_BUF_SET_SRC(op)].ui8;
@@ -287,8 +302,9 @@ uint32_t vm_run( PROM prom,
         bs[OP_BUF_SET_DST(op)].b32[target] = rs[OP_BUF_SET_SRC(op)].ui32;
       }
       pc++;
-      break;
-    case OP_BUF_READ:
+      goto vm_top;
+
+ vm_buf_read:
       if ( bf_get( OP_BUF_READ_IDX(op), 5, 1 ) == 1 ) { // 1-byte
         uint8_t target = bf_get( OP_BUF_READ_IDX(op), 0, 5 );
         rs[OP_BUF_READ_SRC(op)].ui8 = bs[OP_BUF_READ_DST(op)].b8[target];
@@ -300,8 +316,9 @@ uint32_t vm_run( PROM prom,
         rs[OP_BUF_READ_SRC(op)].ui32 = bs[OP_BUF_READ_DST(op)].b32[target];
       }
       pc++;
-      break;
-    case OP_BUF_ALL:
+      goto vm_top;
+
+ vm_buf_all:
       {
         void *dst = &rs;
         void *src = &bs[OP_BUF_ALL_DST(op)];
@@ -313,8 +330,9 @@ uint32_t vm_run( PROM prom,
         memcpy(dst, src, sizeof(buf));
         pc++;
       }
-      break;
-    case OP_STACK_MOV:
+      goto vm_top;
+
+ vm_stack_mov:
       switch ( OP_STACK_MOV_DIR(op) ) {
       case STACK_DIR_READ:
         rs[OP_STACK_MOV_DST(op)].ui32 = isp;
@@ -324,12 +342,7 @@ uint32_t vm_run( PROM prom,
         break;
       }
       pc++;
-      break;
-    default:
-      pc++;
-      break;
-    }
-  }
+      goto vm_top;
 }
 
 extern uint32_t vm2_run( PROM prom,  uint32_t ipc );
