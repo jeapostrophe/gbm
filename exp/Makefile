@@ -19,8 +19,8 @@ fac.bin: fac.rkt bytecode.rkt
 bytecode.h: bytecode.rkt
 	rk bytecode.rkt > bytecode.h
 
-bytecode-vm: bytecode-vm.c bytecode.h bytecode-vm2.o bytecode-vm4.o
-	cc $(CFLAGS) bytecode-vm.c bytecode-vm2.o bytecode-vm4.o -o bytecode-vm
+bytecode-vm: bytecode-vm.c bytecode.h
+	cc $(CFLAGS) bytecode-vm.c -o bytecode-vm
 	cc $(CFLAGS) -S bytecode-vm.c -o bytecode-vm.s
 	cc $(CFLAGS) -S -emit-llvm bytecode-vm.c -o bytecode-vm.ll
 
