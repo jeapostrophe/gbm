@@ -4,8 +4,11 @@
 	.align	4, 0x90
 _vm2_run:                               ## @vm2_run
 	.cfi_startproc
-## BB#0:                                ## %halt
-	retq
+## BB#0:                                ## %entry
+	.align	4, 0x90
+LBB0_1:                                 ## %sub
+                                        ## =>This Inner Loop Header: Depth=1
+	jmp	LBB0_1
 	.cfi_endproc
 
 

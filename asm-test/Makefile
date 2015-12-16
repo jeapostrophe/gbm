@@ -6,6 +6,7 @@ all: fib2 fib4 fib3 fib5 fib6 vm vm2
 
 fib3:
 	time racket -t fib3.rkt
+	time racket -j -t fib3.rkt
 
 fib: fib-launch
 	as fib.s -o fib.o

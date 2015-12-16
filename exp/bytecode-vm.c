@@ -39,7 +39,7 @@ typedef bufset *MEM;
 
 #define dprintf(...)
 
-void vm_run( PROM prom,
+uint32_t vm_run( PROM prom,
              MEM rom, MEM ram, MEM stack, MEM sys, MEM debug,
              uint32_t ipc, uint32_t *pc_stack ) {
   uint32_t pc = ipc;
@@ -225,7 +225,7 @@ void vm_run( PROM prom,
     case OP_HALT:
       dprintf("HALT\n");
       dprintf("\tr2 = %u\n", rs[2].ui32);
-      return;
+      return rs[2].ui32;
       break;
     case OP_LOAD_IMM:
       rs[OP_LOAD_IMM_DST(op)].ui32 = OP_LOAD_IMM_VAL(op);
@@ -312,7 +312,7 @@ void vm_run( PROM prom,
         }
         memcpy(dst, src, sizeof(buf));
         pc++;
-        }
+      }
       break;
     case OP_STACK_MOV:
       switch ( OP_STACK_MOV_DIR(op) ) {
@@ -333,6 +333,166 @@ void vm_run( PROM prom,
 }
 
 extern void vm2_run( PROM prom,  uint32_t ipc );
+
+uint32_t vm3_run( PROM prom, uint32_t ipc ) {
+  uint32_t pc = ipc;
+  uint8_t status = 0;
+  reg r0 = { 0 }, r1 = { 0 }, r2 = { 0 }, r3 = { 0 };
+  reg r4 = { 0 }, r5 = { 0 }, r6 = { 0 }, r7 = { 0 };
+
+  while (1) {
+    OP_T op = prom[pc];
+    dprintf("prom[%u] = %u\n", pc, op);
+    dprintf("OP_CODE = %u\n", OP_CODE(op));
+    switch ( OP_CODE(op) ) {
+    case OP_LOAD_IMM:
+      { uint val = OP_LOAD_IMM_VAL(op);
+        dprintf("IMM(%u)\n", val);
+        switch ( OP_LOAD_IMM_DST(op) ) {
+        case 0: r0.ui32 = val; break;
+        case 1: r1.ui32 = val; break;
+        case 2: r2.ui32 = val; break;
+        case 3: r3.ui32 = val; break;
+        case 4: r4.ui32 = val; break;
+        case 5: r5.ui32 = val; break;
+        case 6: r6.ui32 = val; break;
+        case 7: r7.ui32 = val; break;
+        }
+        pc++;
+      }
+      break;
+    case OP_CMP:
+      {
+        switch ( OP_CMP_MODE(op) ) {
+        case CMP_CODE_I_FALSE: status = 0; break;
+        case    CMP_CODE_I_EQ:
+          { reg lhs = { 0 }, rhs = { 0 };
+            switch ( OP_CMP_LHS(op) ) {
+            case 0: lhs = r0; break;
+            case 1: lhs = r1; break;
+            case 2: lhs = r2; break;
+            case 3: lhs = r3; break;
+            case 4: lhs = r4; break;
+            case 5: lhs = r5; break;
+            case 6: lhs = r6; break;
+            case 7: lhs = r7; break;
+            }
+            switch ( OP_CMP_RHS(op) ) {
+            case 0: rhs = r0; break;
+            case 1: rhs = r1; break;
+            case 2: rhs = r2; break;
+            case 3: rhs = r3; break;
+            case 4: rhs = r4; break;
+            case 5: rhs = r5; break;
+            case 6: rhs = r6; break;
+            case 7: rhs = r7; break;
+            }
+            status = lhs.ui32 == rhs.ui32;
+            dprintf("CMP(%u, ==, %u) = %u\n",
+                    lhs.ui32, rhs.ui32, status);
+            break; }
+        }
+        pc++;
+      }
+      break;
+    case OP_CONTROL_IMM:
+      {
+        if ( OP_CONTROL_COND(op) == CONTROL_COND_ALWAYS || status ) {
+          pc = pc + (OP_CONTROL_IMM_OFFSET(op) - 256);
+        } else {
+          pc = pc + 1;
+        }
+      }
+      break;
+    case OP_MUL:
+      switch ( OP_MUL_MODE(op) ) {
+      case   ARITH_MODE_INT:
+        { reg lhs = { 0 }, rhs = { 0 };
+          switch ( OP_MUL_LHS(op) ) {
+          case 0: lhs = r0; break;
+          case 1: lhs = r1; break;
+          case 2: lhs = r2; break;
+          case 3: lhs = r3; break;
+          case 4: lhs = r4; break;
+          case 5: lhs = r5; break;
+          case 6: lhs = r6; break;
+          case 7: lhs = r7; break;
+          }
+          switch ( OP_MUL_RHS(op) ) {
+          case 0: rhs = r0; break;
+          case 1: rhs = r1; break;
+          case 2: rhs = r2; break;
+          case 3: rhs = r3; break;
+          case 4: rhs = r4; break;
+          case 5: rhs = r5; break;
+          case 6: rhs = r6; break;
+          case 7: rhs = r7; break;
+          }
+          reg res;
+          res.ui32 = lhs.ui32 * rhs.ui32;
+          switch ( OP_MUL_DST(op) ) {
+          case 0: r0 = res; break;
+          case 1: r1 = res; break;
+          case 2: r2 = res; break;
+          case 3: r3 = res; break;
+          case 4: r4 = res; break;
+          case 5: r5 = res; break;
+          case 6: r6 = res; break;
+          case 7: r7 = res; break;
+          }
+          break;
+        }
+      }
+      pc++;
+      break;
+    case OP_SUB:
+      switch ( OP_SUB_MODE(op) ) {
+      case   ARITH_MODE_INT:
+        { reg lhs = { 0 }, rhs = { 0 };
+          switch ( OP_SUB_LHS(op) ) {
+          case 0: lhs = r0; break;
+          case 1: lhs = r1; break;
+          case 2: lhs = r2; break;
+          case 3: lhs = r3; break;
+          case 4: lhs = r4; break;
+          case 5: lhs = r5; break;
+          case 6: lhs = r6; break;
+          case 7: lhs = r7; break;
+          }
+          switch ( OP_SUB_RHS(op) ) {
+          case 0: rhs = r0; break;
+          case 1: rhs = r1; break;
+          case 2: rhs = r2; break;
+          case 3: rhs = r3; break;
+          case 4: rhs = r4; break;
+          case 5: rhs = r5; break;
+          case 6: rhs = r6; break;
+          case 7: rhs = r7; break;
+          }
+          reg res;
+          res.ui32 = lhs.ui32 - rhs.ui32;
+          switch ( OP_SUB_DST(op) ) {
+          case 0: r0 = res; break;
+          case 1: r1 = res; break;
+          case 2: r2 = res; break;
+          case 3: r3 = res; break;
+          case 4: r4 = res; break;
+          case 5: r5 = res; break;
+          case 6: r6 = res; break;
+          case 7: r7 = res; break;
+          }
+          break;
+        }
+      }
+      pc++;
+      break;
+    case OP_HALT:
+      dprintf("\tr2 = %u\n", r2.ui32);
+      return r2.ui32;
+      break;
+    }
+  }
+}
 
 int main ( int argc, char **argv ) {
   printf("reg    = %lu\n", sizeof(reg));
@@ -358,9 +518,11 @@ int main ( int argc, char **argv ) {
 
   clock_t before = clock();
   const unsigned int N = 10000;
+  volatile uint32_t r;
   for (int i = 0; i < N; i++ ) {
-    // vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
-    vm2_run( bin_ptr, 0 );
+    r = vm_run( bin_ptr, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+    // vm2_run( bin_ptr, 0 );
+    // r = vm3_run( bin_ptr, 0 );
   }
   clock_t after = clock();
   clock_t span = after - before;
@@ -369,9 +531,10 @@ int main ( int argc, char **argv ) {
   double fcps = CLOCKS_PER_SEC;
   double fspan_ms = fspan/fcps * 1000.0;
 
-  printf("N(%u) in (%fms), 1 in (%fms)\n", N, fspan_ms, fspan_ms / ((double) N));
+  printf("%u => N(%u) in (%fms), 1 in (%fms)\n",
+         r, N, fspan_ms, fspan_ms / ((double) N));
 
-  
+
   if ( munmap(bin_ptr, bin_len) == -1 ) {
     return -1;
   }
