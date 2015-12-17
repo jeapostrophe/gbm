@@ -84,9 +84,10 @@ uint32_t vm_run( PROM prom, size_t prom_size,
       uint8_t dst = OP_MUL_DST(op);
       uint8_t lhs = OP_MUL_LHS(op);
       uint8_t rhs = OP_MUL_RHS(op);
-      switch ( OP_MUL_MODE(op) ) {
-      case   ARITH_MODE_INT: rs[dst].ui32 = rs[lhs].ui32 * rs[rhs].ui32; VM_TOP;
-      case ARITH_MODE_FLOAT: rs[dst].f32  = rs[lhs].f32  * rs[rhs].f32;  VM_TOP;
+      if ( OP_MUL_MODE(op) == ARITH_MODE_INT ) {
+        rs[dst].ui32 = rs[lhs].ui32 * rs[rhs].ui32; VM_TOP;
+      } else {
+        rs[dst].f32  = rs[lhs].f32  * rs[rhs].f32;  VM_TOP;
       }
     }
 
@@ -206,7 +207,7 @@ uint32_t vm_run( PROM prom, size_t prom_size,
   vm_control: {
       if ( (OP_CONTROL_COND(op) == CONTROL_COND_ALWAYS) | status ) {
         if ( OP_CONTROL_MODE(op) == CONTROL_MODE_CALL ) {
-          *(pc_stack++) = pc;
+          *(++pc_stack) = pc;
         }
         pc = rs[OP_CONTROL_ADDR(op)].ui32;
       }
@@ -216,7 +217,7 @@ uint32_t vm_run( PROM prom, size_t prom_size,
   vm_control_imm: {
       if ( (OP_CONTROL_IMM_COND(op) == CONTROL_COND_ALWAYS) | status ) {
         if ( OP_CONTROL_IMM_MODE(op) == CONTROL_MODE_CALL ) {
-          *(pc_stack++) = pc;
+          *(++pc_stack) = pc;
         }
         pc = pc - 1 + (OP_CONTROL_IMM_OFFSET(op) - 256);
       }
@@ -227,7 +228,7 @@ uint32_t vm_run( PROM prom, size_t prom_size,
       pc++;
       if ( (OP_CONTROL_IMM_COND(op) == CONTROL_COND_ALWAYS) | status ) {
         if ( OP_CONTROL_IMMX_MODE(op) == CONTROL_MODE_CALL ) {
-          *(pc_stack++) = pc;
+          *(++pc_stack) = pc;
         }
         pc = (OP_CONTROL_IMM_OFFSET(op) << 16) + prom[pc-1];
       }
@@ -251,8 +252,7 @@ uint32_t vm_run( PROM prom, size_t prom_size,
     }
 
   vm_load_immx: {
-      rs[OP_LOAD_IMMX_DST(op)].ui32 = (OP_LOAD_IMMX_HI(op)<<16) + prom[pc];
-      pc++;
+      rs[OP_LOAD_IMMX_DST(op)].ui32 = (OP_LOAD_IMMX_HI(op)<<16) + prom[pc++];
       VM_TOP;
     }
 
