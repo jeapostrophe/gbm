@@ -349,33 +349,74 @@ uint32_t vm_run( PROM prom, size_t prom_size,
   }
 }
 
+uint32_t vm2_run(uint32_t N, uint32_t m) {
+  uint8_t status = 0;
+  bufset bs = { 0 };
+  reg r0, r1, r2, r3, r4, r5, r6, r7;
+  uint32_t isp = 0;
+
+ i0: r4.ui32 = N;
+ i1:
+ i2: r0.ui32 = 0;
+ i3: r1.ui32 = m;
+ i4: r2.ui32 = 1;
+ i5: r3.ui32 = 1;
+ i6: status = r0.ui32 == r1.ui32;
+ i7: if (status) { goto i11; }
+ i8: r2.ui32 = r1.ui32 * r2.ui32;
+ i9: r1.ui32 = r1.ui32 - r3.ui32;
+ i10: goto i6;
+ i11: r4.ui32 = r4.ui32 - r3.ui32;
+ i12: status = r0.ui32 != r4.ui32;
+ i13: if (status) { goto i2; }
+ i14: return r2.ui32;
+}
+
 int main ( int argc, char **argv ) {
   printf("reg    = %lu\n", sizeof(reg));
   printf("buf    = %lu\n", sizeof(buf));
   printf("OP_T   = %lu\n", sizeof(OP_T));
 
-  const char *bin_path = argv[1];
-  FILE *bin_f = fopen(bin_path, "r");
-  if (bin_f == NULL) {
-    return -1;
-  }
-  int bin_fd = fileno(bin_f);
+  uint8_t BYTECODE_p = argc == 2;
 
-  struct stat bin_st;
-  fstat(bin_fd, &bin_st);
-  int bin_len = bin_st.st_size;
+  char *bin_path = NULL;
+  void *bin_ptr = NULL;
+  FILE *bin_f = NULL;
+  int bin_len = 0;
+  size_t prom_size = 0;
+  uint32_t N = 0;
+  uint32_t m = 0;
 
-  void *bin_ptr =
-    mmap(NULL, bin_len, PROT_EXEC | PROT_READ, MAP_FILE | MAP_PRIVATE, bin_fd, 0);
-  if (bin_ptr == MAP_FAILED) {
-    return -1;
+  if ( BYTECODE_p ) {
+    bin_path = argv[1];
+
+    bin_f = fopen(bin_path, "r");
+    if (bin_f == NULL) {
+      return -1;
+    }
+    int bin_fd = fileno(bin_f);
+
+    struct stat bin_st;
+    fstat(bin_fd, &bin_st);
+    bin_len = bin_st.st_size;
+
+    bin_ptr =
+      mmap(NULL, bin_len, PROT_EXEC | PROT_READ, MAP_FILE | MAP_PRIVATE, bin_fd, 0);
+    if (bin_ptr == MAP_FAILED) {
+      return -1;
+    }
+    prom_size = bin_len / 2;
+
+  } else {
+    N = atoi(argv[1]);
+    m = atoi(argv[2]);
   }
-  size_t prom_size = bin_len / 2;
 
   clock_t before = clock();
-  const unsigned int N = 10000;
   uint32_t r =
-    vm_run( bin_ptr, prom_size, NULL, NULL, NULL, NULL, NULL, 0, NULL );
+    BYTECODE_p ? 
+    vm_run( bin_ptr, prom_size, NULL, NULL, NULL, NULL, NULL, 0, NULL ) :
+    vm2_run(N, m);
   clock_t after = clock();
   clock_t span = after - before;
 
@@ -386,10 +427,12 @@ int main ( int argc, char **argv ) {
   printf("%u => N(%u) in (%fms), 1 in (%fms)\n",
          r, N, fspan_ms, fspan_ms / ((double) N));
 
-
-  if ( munmap(bin_ptr, bin_len) == -1 ) {
-    return -1;
+  if ( BYTECODE_p ) {
+    if ( munmap(bin_ptr, bin_len) == -1 ) {
+      return -1;
+    }
+    fclose(bin_f);
   }
-  fclose(bin_f);
+  
   return 0;
 }
