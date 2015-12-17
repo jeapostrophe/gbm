@@ -338,11 +338,10 @@ uint32_t vm_run( PROM prom, size_t prom_size,
     }
 
   vm_stack_mov: {
-      switch ( OP_STACK_MOV_DIR(op) ) {
-      case STACK_DIR_READ:
+      if ( OP_STACK_MOV_DIR(op) == STACK_DIR_READ ) {
         rs[OP_STACK_MOV_DST(op)].ui32 = isp;
         VM_TOP;
-      case STACK_DIR_WRITE:
+      } else {
         isp = rs[OP_STACK_MOV_DST(op)].ui32;
         VM_TOP;
       }
