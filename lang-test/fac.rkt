@@ -10,16 +10,21 @@
                  (r-ret acc))))
 
 (define main
-  (r-fun () : r-int
-         ;; XXX how to make a call? Should we record deps? (given that
-         ;; functions don't get their names until later and we don't
-         ;; want to force them all to be listed in the exe?)
+  (r-fun ([r-int argc] [(r-ptr (r-ptr r-char)) argv]) : r-int
+         (r-let* ([ui64 r 0])
+                 (r-for [ui32 i 0]
+                        (r<= i 10000)
+                        (r-set! i (r+ i 1))
+                        (r-set! r (r-app fac (list 12))))
+                 (r-app stdio-printf
+                        (list "r = %llu\n" r)))
          (r-ret 0)))
 
 (define exe
-  (r-exe (r-public-fun "fac" fac)
-         (r-private-fun "sfac" fac)
-         (r-public-fun "main" main)))
+  (r-exe
+   ;; XXX Make this discovered dynamically
+   (r-private-fun fac)
+   (r-public-fun "main" main)))
 
 (module+ test)
 
