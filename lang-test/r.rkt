@@ -174,7 +174,7 @@
   [(define (s-write t)
      (match-define (*r-ret v) t)
      (if v
-         @dsp{return @gs-write[v]@semi}
+         @dsp{return @ge-write[v]@semi}
          @dsp{return@semi}))])
 (define (r-ret [v #f])
   (*r-ret v))
