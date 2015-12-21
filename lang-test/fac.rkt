@@ -24,7 +24,7 @@
                             (r<= i 10000)
                             (r-set! i (r+ i 1))
                             (r-set! r (r-app fac (list 12))))
-                     (r-app stdio-printf
+                     (r-app stdio:printf
                             (list (format "~a r = %llu\n" which) r))))
            (r-begin (list (test-fac "iter" fac)
                           (test-fac " rec" fac-rec))))

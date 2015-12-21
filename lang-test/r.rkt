@@ -90,6 +90,15 @@
 (define (r-var-walk! v)
   (r-ty-walk! (r-var-ty v)))
 
+(struct *r-var-extern (id inc)
+  #:methods gen:r-expr
+  [(define (r-e-write t)
+     (match-define (*r-var-extern id inc) t)
+     id)
+   (define (r-e-walk! t)
+     (match-define (*r-var-extern id inc) t)
+     (r-include-walk! inc))])
+
 (struct *r-rec (pr)
   #:methods gen:r-expr
   [(define (r-e-write t)
@@ -118,6 +127,21 @@
 (define-binary-r-expr r+ "+")
 (define-binary-r-expr r* "*")
 (define-binary-r-expr r- "-")
+
+(define (r-e-write-un-expr op r)
+  @dsp{(@op (@gr-e-write[r]))})
+(define-syntax-rule (define-unary-r-expr id op)
+  (begin
+    (struct id (rhs)
+    #:methods gen:r-expr
+    [(define (r-e-write t)
+       (match-define (id r) t)
+       (r-e-write-un-expr op r))
+     (define (r-e-walk! t)
+       (match-define (id r) t)
+       (gr-e-walk! r))])
+    (provide (contract-out [id (-> r-expr? r-expr?)]))))
+(define-unary-r-expr r! "!")
 
 (struct r-app (fe args)
   #:methods gen:r-expr
@@ -266,6 +290,9 @@
 (define-generics r-fun)
 
 (struct *r-fun-extern (sym inc)
+  #:property prop:procedure
+  (λ (t . args)
+    (r-app t args))
   #:methods gen:r-fun
   []
   #:methods gen:r-expr
@@ -277,6 +304,9 @@
      (r-include-walk! i))])
 
 (struct *r-fun (id args ret body)
+  #:property prop:procedure
+  (λ (t . args)
+    (r-app t args))
   #:methods gen:r-fun
   []
   #:methods gen:r-expr
@@ -311,12 +341,19 @@
          (*r-fun '#,(syntax-local-name) (list v ...) r-ty
                  (r-begin (list body ...)))))]))
 
-(struct r-include (litc))
+(struct *r-include (pre litc post))
 (define (r-include-walk! i)
   (set-add! (current-includes)
             i))
 (define (r-include-write i)
-  @dsp{#include @(r-include-litc i)@"\n"})
+  (match-define (*r-include pre lc post) i)
+  @dsp{@(add-between pre "\n") @"\n"
+       #include @lc @"\n"
+       @(add-between post "\n") @"\n"})
+(define (r-include #:pre-options [pre '()]
+                   litc 
+                   #:post-options [post '()])
+  (*r-include pre litc post))
 
 (define-generics r-decl
   [r-decl-walk! r-decl #:deep? bool])
@@ -402,9 +439,6 @@
 (define si16 (r-ty-verbatim+include  "int16_t" <stdint.h>))
 (define  si8 (r-ty-verbatim+include   "int8_t" <stdint.h>))
 
-(define <stdio.h> (r-include "<stdio.h>"))
-(define stdio-printf (*r-fun-extern "printf" <stdio.h>))
-
 (provide
  r-fun
  r-let*
@@ -416,7 +450,7 @@
   [si8 r-ty?] [si16 r-ty?] [si32 r-ty?] [si64 r-ty?]
   [f32 r-ty?] [f64 r-ty?] [f128 r-ty?]
   [r-ptr (-> r-ty? r-ty?)]
-  [stdio-printf r-fun?]
+  [r-include (->* (string?) (#:pre-options (listof string?) #:post-options (listof string?)) *r-include?)]
   [r-var (-> r-ty? symbol? r-expr?)]
   [r-app (-> r-expr? (listof r-expr?) r-expr?)]
   [*r-rec (-> (-> r-expr?) r-expr?)]
@@ -436,3 +470,39 @@
   [r-public-fun (-> string? r-fun? r-decl?)]
   [r-exe (->* () () #:rest (listof r-decl?) r-exe?)]
   [r-emit (-> r-exe? void?)]))
+
+(define (r-unless cond body)
+  (r-when (r! cond) body))
+(define (r-when cond body)
+  (r-if cond body (r-begin '())))
+
+(provide
+ (contract-out
+  [r-unless (-> r-expr? r-statement? r-statement?)]
+  [r-when (-> r-expr? r-statement? r-statement?)]))
+
+(define-simple-macro (define-r-fn fn:id #:from inc:id)
+  (define fn (*r-fun-extern (symbol->string 'fn) inc)))
+
+(define-simple-macro (define-r-fns #:from inc:id fn:id ...)
+  (begin (define-r-fn fn #:from inc) ...))
+
+(define-simple-macro (define-r-val val:id #:from inc:id)
+  (define val (*r-var-extern (symbol->string 'val) inc)))
+
+(define-simple-macro (define-r-vals #:from inc:id fn:id ...)
+  (begin (define-r-val fn #:from inc) ...))
+
+(provide define-r-fn
+         define-r-fns
+         define-r-val
+         define-r-vals)
+
+(define <stdio.h> (r-include "<stdio.h>"))
+(define stdio:printf (*r-fun-extern "printf" <stdio.h>))
+(provide <stdio.h> stdio:printf)
+
+(define <stdlib.h> (r-include "<stdlib.h>"))
+(define-r-vals #:from <stdlib.h> EXIT_FAILURE)
+(define stdlib:exit (*r-fun-extern "exit" <stdlib.h>))
+(provide <stdlib.h> stdlib:exit EXIT_FAILURE)
