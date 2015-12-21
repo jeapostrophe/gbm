@@ -1,5 +1,5 @@
-CFLAGS=-Werror -std=gnu99 -O3 -mbmi -mavx -mavx2 -fvectorize -funroll-loops -fslp-vectorize -fslp-vectorize-aggressive -march=native `pkg-config --cflags glfw3`
-LDFLAGS=`pkg-config --static --libs glfw3` -llightning -lportaudio
+CFLAGS=-Werror -std=gnu99 -O3 -mbmi -mavx -mavx2 -fvectorize -funroll-loops -fslp-vectorize -fslp-vectorize-aggressive -march=native `pkg-config --cflags glfw3` `pkg-config --cflags portaudio-2.0`
+LDFLAGS=`pkg-config --static --libs glfw3` `pkg-config --static --libs portaudio-2.0`
 TARGETS=gbm vm2
 
 all: $(TARGETS) size vm2-test
@@ -34,7 +34,7 @@ bytecode-vm2.o: bytecode-vm2.s
 bytecode-vm4.o: bytecode-vm4.s
 	nasm -w+all -Ox -f macho64 $^ -o $@
 
-gbm: gbm.o audio.o jit.o thread.o video.o vm.o
+gbm: gbm.o audio.o thread.o video.o vm.o
 	cc $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 size:

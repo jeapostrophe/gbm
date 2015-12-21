@@ -2,6 +2,7 @@
 #include <math.h>
 #include <inttypes.h>
 #include <portaudio.h>
+#include <stdlib.h>
 
 #define NUM_SECONDS   (5)
 #define CHANNELS (2)
@@ -47,9 +48,15 @@ int audio_main(void) {
          SAMPLE_RATE, FRAMES_PER_BUFFER);
 
   for( uint32_t i = 0; i < FRAMES_PER_BUFFER; i++ ) {
-    uint8_t val =
+    uint8_t sin_val =
       (uint8_t) ((128.0 * sin( 4400.0 * ((double)i/(double)FRAMES_PER_BUFFER) * M_PI * 2. ))
                  + 128.0);
+    uint8_t pos_sin_val = sin_val < 128 ? 0 : sin_val;
+    
+    uint8_t ran_val = (random() % 256);
+    uint8_t pos_ran_val = ran_val < 128 ? 0 : ran_val;
+
+    uint8_t val = sin_val;
     AUDIO_FRAMES[CHANNELS*i + 0] = val;
     AUDIO_FRAMES[CHANNELS*i + 1] = val;
   }
