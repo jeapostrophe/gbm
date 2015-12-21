@@ -22,8 +22,6 @@
 
 (define exe
   (r-exe
-   ;; XXX Make this discovered dynamically
-   (r-private-fun fac)
    (r-public-fun "main" main)))
 
 (module+ test)

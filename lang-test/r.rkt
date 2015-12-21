@@ -1,5 +1,6 @@
 #lang at-exp racket/base
 (require racket/format
+         racket/set
          racket/contract/base
          (for-syntax racket/base
                      syntax/parse)
@@ -15,35 +16,54 @@
 (define (gencsym s)
   (symbol->string (gensym (regexp-replace* #rx"[^A-Za-z_0-9]" (~a "_" s) "_"))))
 
-(define-generics ty-writer
-  [ty-write ty-writer]
-  [ty-write-as str ty-writer])
-(define gty-write ty-write)
+(define-generics r-ty
+  [r-ty-write r-ty]
+  [r-ty-write-as str r-ty]
+  [r-ty-walk! r-ty])
+(define gr-ty-write r-ty-write)
+(define gr-ty-walk! r-ty-walk!)
 
-(define-generics e-writer
-  [e-write e-writer]
+(define-generics r-expr
+  [r-e-write r-expr]
+  [r-e-walk! r-expr]
   #:fast-defaults
-  ([number?
-    (define (e-write t) (number->string t))]
+  ([integer?
+    (define (r-e-write t) (number->string t))
+    (define r-e-walk! void)]
+   [inexact-real?
+    (define (r-e-write t) (number->string t))
+    (define r-e-walk! void)]
    [string?
-    (define (e-write t) (~v t))]))
-(define ge-write e-write)
+    (define (r-e-write t) (~v t))
+    (define r-e-walk! void)]))
+(define gr-e-write r-e-write)
+(define gr-e-walk! r-e-walk!)
 
-(define-generics s-writer
-  [s-write s-writer]
+(define-generics r-statement
+  [r-s-write r-statement]
+  [r-s-walk! r-statement]
   #:defaults
-  ([e-writer?
-    (define (s-write t) @dsp{@(e-write t)@semi})]))
-(define gs-write s-write)
+  ([r-expr?
+    (define (r-s-write t) @dsp{@(r-e-write t)@semi})
+    (define (r-s-walk! t) (r-e-walk! t))]))
+(define gr-s-write r-s-write)
+(define gr-s-walk! r-s-walk!)
 
-(struct r-ty ())
-(struct r-ty-verbatim r-ty (in-c)
-  #:methods gen:ty-writer
-  [(define (ty-write t)
-     (match-define (r-ty-verbatim ic) t)
+(struct r-ty-verbatim+include (in-c inc)
+  #:methods gen:r-ty
+  [(define (r-ty-write t)
+     (match-define (r-ty-verbatim+include ic inc) t)
      ic)
-   (define (ty-write-as s t)
-     @dsp{@(ty-write t) @s})])
+   (define (r-ty-write-as s t)
+     @dsp{@(r-ty-write t) @s})
+   (define (r-ty-walk! t)
+     (match-define (r-ty-verbatim+include ic inc) t)
+     (when inc
+       (r-include-walk! inc)))])
+
+(define (r-ty-verbatim in-c)
+  (r-ty-verbatim+include in-c #f))
+
 (define r-char (r-ty-verbatim "char"))
 (define r-int (r-ty-verbatim "int"))
 (define r-void (r-ty-verbatim "void"))
@@ -51,30 +71,38 @@
 (define f64 (r-ty-verbatim "double"))
 (define f128 (r-ty-verbatim "long double"))
 
-(struct r-ptr r-ty (i)
-  #:methods gen:ty-writer
-  [(define (ty-write t)
-     @dsp{@(gty-write (r-ptr-i t)) *})
-   (define (ty-write-as s t)
-     @dsp{@(ty-write t) @s})])
+(struct r-ptr (i)
+  #:methods gen:r-ty
+  [(define (r-ty-write t)
+     @dsp{@(gr-ty-write (r-ptr-i t)) *})
+   (define (r-ty-write-as s t)
+     @dsp{@(r-ty-write t) @s})
+   (define (r-ty-walk! t) (gr-ty-walk! (r-ptr-i t)))])
 
-(struct *r-expr ())
-(struct r-var *r-expr (ty id-base)
-  #:methods gen:e-writer
-  [(define (e-write t)
-     (r-var-mapping-ref t))])
+(struct r-var (ty id-base)
+  #:methods gen:r-expr
+  [(define (r-e-write t)
+     (r-var-mapping-ref t))
+   (define (r-e-walk! t)
+     (r-ty-walk! (r-var-ty t)))])
 (define (r-var-id v)
   (gencsym (r-var-id-base v)))
+(define (r-var-walk! v)
+  (r-ty-walk! (r-var-ty v)))
 
-(define (e-write-bin-expr l op r)
-  @dsp{((@ge-write[l]) @op (@ge-write[r]))})
+(define (r-e-write-bin-expr l op r)
+  @dsp{((@gr-e-write[l]) @op (@gr-e-write[r]))})
 (define-syntax-rule (define-binary-r-expr id op)
   (begin
-    (struct id *r-expr (lhs rhs)
-    #:methods gen:e-writer
-    [(define (e-write t)
+    (struct id (lhs rhs)
+    #:methods gen:r-expr
+    [(define (r-e-write t)
        (match-define (id l r) t)
-       (e-write-bin-expr l op r))])
+       (r-e-write-bin-expr l op r))
+     (define (r-e-walk! t)
+       (match-define (id l r) t)
+       (gr-e-walk! l)
+       (gr-e-walk! r))])
     (provide (contract-out [id (-> r-expr? r-expr? r-expr?)]))))
 (define-binary-r-expr r!= "!=")
 (define-binary-r-expr r<= "<=")
@@ -82,11 +110,15 @@
 (define-binary-r-expr r* "*")
 (define-binary-r-expr r- "-")
 
-(struct r-app *r-expr (fe args)
-  #:methods gen:e-writer
-  [(define (e-write t)
+(struct r-app (fe args)
+  #:methods gen:r-expr
+  [(define (r-e-write t)
      (match-define (r-app fe args) t)
-     @dsp{(@ge-write[fe])(@(add-between (map ge-write args) ", "))})])
+     @dsp{(@gr-e-write[fe])(@(add-between (map gr-e-write args) ", "))})
+   (define (r-e-walk! t)
+     (match-define (r-app fe args) t)
+     (gr-e-walk! fe)
+     (for-each gr-e-walk! args))])
 
 (define current-r-var-mapping (make-parameter (hasheq)))
 (define-simple-macro (with-r-var-mapping v . body)
@@ -98,16 +130,25 @@
   (cond [(r-var? v) (i v h)]
         [else (foldr i h v)]))
 (define (r-var-mapping-ref v)
-  (hash-ref (current-r-var-mapping) v
+  (define m (current-r-var-mapping))
+  (unless m
+    (error 'r-var-mapping-ref "No r-var-mapping-ref"))
+  (hash-ref m v
             (λ () (error 'r-var-mapping-ref "unbound var: ~e" (r-var-id-base v)))))
 (define (r-write-var-def v)
-  (ty-write-as (r-var-mapping-ref v) (r-var-ty v)))
+  (r-ty-write-as (r-var-mapping-ref v) (r-var-ty v)))
 
 (define current-r-global-mapping (make-parameter #f))
-(define (r-global-mapping-add! v)
-  (hash-ref! (current-r-global-mapping) v (gencsym (*r-fun-id v))))
+(define (r-global-mapping-add! v s)
+  (hash-set! (current-r-global-mapping) v s))
+(define (r-global-mapping-try-add! v)
+  (define m (current-r-global-mapping))
+  (and (not (hash-has-key? m v))
+       (hash-set! m v (gencsym (*r-fun-id v)))))
 (define (r-global-mapping-ref v)
   (define m (current-r-global-mapping))
+  (unless m
+    (error 'r-global-mapping-ref "no current-r-global-mapping"))
   (hash-ref m v
             (λ () (error 'r-global-mapping-ref "unbound fun(~e) in ~e"
                          (*r-fun-id v)
@@ -122,18 +163,25 @@
         (for/list ([i (in-range (current-indent))])
           " ")))
 
-(struct *r-statement ())
-(struct r-begin *r-statement (stmts)
-  #:methods gen:s-writer
-  [(define (s-write t)
+(struct r-begin (stmts)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
      (match-define (r-begin ss) t)
-     @dsp{{@indent{@(add-between (map gs-write ss) (indentnl))}}})])
-(struct *r-let1 *r-statement (v e body)
-  #:methods gen:s-writer
-  [(define (s-write t)
+     @dsp{{@indent{@(add-between (map gr-s-write ss) (indentnl))}}})
+   (define (r-s-walk! t)
+     (match-define (r-begin ss) t)
+     (for-each gr-s-walk! ss))])
+(struct *r-let1 (v e body)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
      (match-define (*r-let1 v e b) t)
      (with-r-var-mapping v
-       @dsp{{@r-write-var-def[v] = @ge-write[e]@|semi|@(indentnl)@gs-write[b]}}))])
+       @dsp{{@r-write-var-def[v] = @gr-e-write[e]@|semi|@(indentnl)@gr-s-write[b]}}))
+   (define (r-s-walk! t)
+     (match-define (*r-let1 v e b) t)
+     (r-var-walk! v)
+     (r-e-walk! e)
+     (gr-s-walk! b))])
 (define-syntax (r-let* stx)
   (syntax-parse stx
     [(r-let () . body)
@@ -145,58 +193,95 @@
          (*r-let1 v v-e
                   (r-let more . body))))]))
 
-(struct *r-while *r-statement (cond body)
-  #:methods gen:s-writer
-  [(define (s-write t)
+(struct *r-while (cond body)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
      (match-define (*r-while c b) t)
-     @dsp{while (@ge-write[c]) {@(indentnl)@indent{@gs-write[b]}}})])
+     @dsp{while (@gr-e-write[c]) {@(indentnl)@indent{@gr-s-write[b]}}})
+   (define (r-s-walk! t)
+     (match-define (*r-while c b) t)
+     (gr-e-walk! c)
+     (gr-s-walk! b))])
 (define (r-while test . body)
   (*r-while test (r-begin body)))
 
-(struct *r-for *r-statement (init cond step body)
-  #:methods gen:s-writer
-  [(define (s-write t)
-     (match-define (*r-for i c s b) t)
-     @dsp{for (@semi @ge-write[c]@semi @ge-write[s]) {@(indentnl)@indent{@gs-write[b]}}})])
+(struct *r-for (cond step body)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
+     (match-define (*r-for c s b) t)
+     @dsp{for (@semi @gr-e-write[c]@semi @gr-e-write[s]) {@(indentnl)@indent{@gr-s-write[b]}}})
+   (define (r-s-walk! t)
+     (match-define (*r-for c s b) t)
+     (r-e-walk! c)
+     (gr-s-walk! s)
+     (gr-s-walk! b))])
 (define-simple-macro (r-for [v-ty v v-e] v-cond v-step . body)
   (r-let* ([v-ty v v-e])
-          (*r-for v v-cond v-step (r-begin (list . body)))))
+          (*r-for v-cond v-step (r-begin (list . body)))))
 
 (define r-lvalue?
   (or/c r-var?))
-(struct r-set! *r-expr (lv rhs)
-  #:methods gen:e-writer
-  [(define (e-write t)
+(struct r-set! (lv rhs)
+  #:methods gen:r-expr
+  [(define (r-e-write t)
      (match-define (r-set! l r) t)
-     @dsp{@ge-write[l] = @ge-write[r]})])
-(struct *r-ret *r-statement (v)
-  #:methods gen:s-writer
-  [(define (s-write t)
+     @dsp{@gr-e-write[l] = @gr-e-write[r]})
+   (define (r-e-walk! t)
+     (match-define (r-set! l r) t)
+     (gr-e-walk! l)
+     (gr-e-walk! r))])
+(struct *r-ret (v)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
      (match-define (*r-ret v) t)
      (if v
-         @dsp{return @ge-write[v]@semi}
-         @dsp{return@semi}))])
+         @dsp{return @gr-e-write[v]@semi}
+         @dsp{return@semi}))
+   (define (r-s-walk! t)
+     (match-define (*r-ret v) t)
+     (gr-s-walk! v))])
 (define (r-ret [v #f])
   (*r-ret v))
 
-(struct r-def ())
-(struct *r-fun-extern (sym)
-  #:methods gen:e-writer
-  [(define (e-write t)
-     (match-define (*r-fun-extern s) t)
-     s)])
+(define-generics r-fun)
 
-(struct *r-fun r-def (id args ret body)
-  #:methods gen:e-writer
-  [(define (e-write t)
-     (r-global-mapping-ref t))])
-(define (r-fun-write-decl t
+(struct *r-fun-extern (sym inc)
+  #:methods gen:r-fun
+  []
+  #:methods gen:r-expr
+  [(define (r-e-write t)
+     (match-define (*r-fun-extern s i) t)
+     s)
+   (define (r-e-walk! t)
+     (match-define (*r-fun-extern s i) t)
+     (r-include-walk! i))])
+
+(struct *r-fun (id args ret body)
+  #:methods gen:r-fun
+  []
+  #:methods gen:r-expr
+  [(define (r-e-write t)
+     (r-global-mapping-ref t))
+   (define (r-e-walk! t)
+     (r-fun-walk! t))])
+(define (r-fun-walk! t #:global? [global? #f])
+  (define walk? global?)
+  (when (r-global-mapping-try-add! t)
+    (set-add! (current-defns) (r-private-fun t))
+    (set! walk? #t))
+  (when walk?  
+    (match-define (*r-fun id args ret body) t)
+    (for-each r-var-walk! args)
+    (r-ty-walk! ret)
+    (r-s-walk! body)))
+
+(define (r-fun-write-defn t
                           #:name sym
                           #:visibility [vis ""]
                           #:proto-only? [proto-only? #f])
   (match-define (*r-fun id args ret body) t)
   (with-r-var-mapping args
-    @dsp{@|vis|@ty-write[ret] @sym (@(add-between (map r-write-var-def args) ", "))@(if proto-only? ";" @indent{{@(indentnl)@gs-write[body]}})}))
+    @dsp{@|vis|@r-ty-write[ret] @sym (@(add-between (map r-write-var-def args) ", "))@(if proto-only? ";" @indent{{@(indentnl)@gr-s-write[body]}})@"\n"}))
 (define-syntax (r-fun stx)
   (syntax-parse stx
     [(_ ([v-ty v:id] ...) (~datum :) r-ty body ...)
@@ -206,46 +291,69 @@
          (*r-fun '#,(syntax-local-name) (list v ...) r-ty
                  (r-begin (list body ...)))))]))
 
-(define r-fun?
-  (or/c *r-fun-extern? *r-fun?))
-(define r-expr?
-  (or/c *r-expr? r-fun? integer? inexact-real? string?))
-(define r-statement?
-  (or/c *r-statement? r-expr?))
+(struct r-include (litc))
+(define (r-include-walk! i)
+  (set-add! (current-includes)
+            i))
+(define (r-include-write i)
+  @dsp{#include @(r-include-litc i)@"\n"})
 
-(define-generics r-decl-writer
-  [r-decl-write-proto r-decl-writer]
-  [r-decl-write r-decl-writer])
+(define-generics r-decl
+  [r-decl-walk! r-decl #:deep? bool])
+(define-generics r-defn
+  [r-defn-write-proto r-defn]
+  [r-defn-write r-defn])
 
-(struct r-decl ())
-(struct r-public-fun r-decl (symbol f)
-  #:methods gen:r-decl-writer
-  [(define (r-decl-write t)
+(struct r-public-fun (symbol f)
+  #:methods gen:r-decl
+  [(define (r-decl-walk! t #:deep? deep?)
      (match-define (r-public-fun s f) t)
-     (r-fun-write-decl f #:name s))
-   (define (r-decl-write-proto t)
+     (set-add! (current-defns) t)
+     (r-global-mapping-add! f s)
+     (when deep?
+       (r-fun-walk! f #:global? #t)))]
+  #:methods gen:r-defn
+  [(define (r-defn-write t)
      (match-define (r-public-fun s f) t)
-     (r-fun-write-decl f #:name s #:proto-only? #t))])
-(struct r-private-fun r-decl (f)
-  #:methods gen:r-decl-writer
-  [(define (r-decl-write t)
+     (r-fun-write-defn f #:name s))
+   (define (r-defn-write-proto t)
+     (match-define (r-public-fun s f) t)
+     (r-fun-write-defn f #:name s #:proto-only? #t))])
+(struct r-private-fun (f)
+  #:methods gen:r-defn
+  [(define (r-defn-write t)
      (match-define (r-private-fun f) t)
-     (define s (r-global-mapping-add! f))
-     (r-fun-write-decl f #:name s #:visibility "static "))
-   (define (r-decl-write-proto t)
+     (r-fun-write-defn f
+                       #:name (r-global-mapping-ref f)
+                       #:visibility "static "))
+   (define (r-defn-write-proto t)
      (match-define (r-private-fun f) t)
-     (define s (r-global-mapping-add! f))
-     (r-fun-write-decl f #:name s #:visibility "static " #:proto-only? #t))])
+     (r-fun-write-defn f
+                       #:name (r-global-mapping-ref f)
+                       #:visibility "static "
+                       #:proto-only? #t))])
+
+(define current-includes (make-parameter #f))
+(define current-defns (make-parameter #f))
 
 (struct *r-exe (decls))
 (define (r-exe-write t)
   (match-define (*r-exe ds) t)
-  (parameterize ([current-r-global-mapping (make-hasheq)])
-    ;; XXX discover these includes
-    @dsp{#include <stdio.h>
-         #include <stdint.h>
-         @(map (λ (d) (cons (r-decl-write-proto d) "\n")) ds)
-         @(map (λ (d) (cons (r-decl-write d) "\n\n")) ds)}))
+  (define include-set (mutable-seteq))
+  (define defn-set (mutable-seteq))
+  (define global-mapping (make-hasheq))
+  (parameterize ([current-includes include-set]
+                 [current-defns defn-set]
+                 [current-r-global-mapping global-mapping])
+    (for-each (λ (d) (r-decl-walk! d #:deep? #f)) ds)
+    (for-each (λ (d) (r-decl-walk! d #:deep? #t)) ds)
+    (dsp
+     (for/list ([i (in-set include-set)])
+       (r-include-write i))
+     (for/list ([d (in-set defn-set)])
+       (r-defn-write-proto d))
+     (for/list ([d (in-set defn-set)])
+       (r-defn-write d)))))
 (define (r-exe . decls)
   (*r-exe decls))
 (define r-exe? *r-exe?)
@@ -260,15 +368,19 @@
      (l-display (car l))
      (l-display (cdr l))]))
 
-(define ui64 (r-ty-verbatim "uint64_t"))
-(define ui32 (r-ty-verbatim "uint32_t"))
-(define ui16 (r-ty-verbatim "uint16_t"))
-(define ui8 (r-ty-verbatim "uint8_t"))
-(define si64 (r-ty-verbatim "int64_t"))
-(define si32 (r-ty-verbatim "int32_t"))
-(define si16 (r-ty-verbatim "int16_t"))
-(define si8 (r-ty-verbatim "int8_t"))
-(define stdio-printf (*r-fun-extern "printf"))
+(define <stdint.h> (r-include "<stdint.h>"))
+
+(define ui64 (r-ty-verbatim+include "uint64_t" <stdint.h>))
+(define ui32 (r-ty-verbatim+include "uint32_t" <stdint.h>))
+(define ui16 (r-ty-verbatim+include "uint16_t" <stdint.h>))
+(define ui8 (r-ty-verbatim+include "uint8_t" <stdint.h>))
+(define si64 (r-ty-verbatim+include "int64_t" <stdint.h>))
+(define si32 (r-ty-verbatim+include "int32_t" <stdint.h>))
+(define si16 (r-ty-verbatim+include "int16_t" <stdint.h>))
+(define si8 (r-ty-verbatim+include "int8_t" <stdint.h>))
+
+(define <stdio.h> (r-include "<stdio.h>"))
+(define stdio-printf (*r-fun-extern "printf" <stdio.h>))
 
 (provide
  r-fun
@@ -286,7 +398,7 @@
   [*r-let1 (-> r-var? r-expr? r-statement? r-statement?)]
   [r-while (->* (r-expr?) () #:rest (listof r-statement?) r-statement?)]
   [*r-while (-> r-expr? r-statement? r-statement?)]
-  [*r-for (-> r-expr? r-expr? r-statement? r-statement? r-statement?)]
+  [*r-for (-> r-expr? r-statement? r-statement? r-statement?)]
   [r-set! (-> r-lvalue? r-expr? r-expr?)]
   [r-ret (->* () (r-expr?) r-statement?)]
   [*r-fun (-> symbol?
@@ -295,6 +407,5 @@
               (listof r-statement?)
               r-fun?)]
   [r-public-fun (-> string? r-fun? r-decl?)]
-  [r-private-fun (-> r-fun? r-decl?)]
   [r-exe (->* () () #:rest (listof r-decl?) r-exe?)]
   [r-emit (-> r-exe? void?)]))
