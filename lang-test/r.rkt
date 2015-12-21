@@ -90,6 +90,15 @@
 (define (r-var-walk! v)
   (r-ty-walk! (r-var-ty v)))
 
+(struct *r-rec (pr)
+  #:methods gen:r-expr
+  [(define (r-e-write t)
+     (gr-e-write ((*r-rec-pr t))))
+   (define (r-e-walk! t)
+     (gr-e-walk! ((*r-rec-pr t))))])
+(define-syntax-rule (r-rec e)
+  (*r-rec (λ () e)))
+
 (define (r-e-write-bin-expr l op r)
   @dsp{((@gr-e-write[l]) @op (@gr-e-write[r]))})
 (define-syntax-rule (define-binary-r-expr id op)
@@ -205,6 +214,17 @@
 (define (r-while test . body)
   (*r-while test (r-begin body)))
 
+(struct r-if (cond true false)
+  #:methods gen:r-statement
+  [(define (r-s-write t)
+     (match-define (r-if c tr fa) t)
+     @dsp{if (@gr-e-write[c]) {@(indentnl)@indent{@gr-s-write[tr]}@(indentnl)} else {@(indentnl)@indent{@gr-s-write[fa]}}})
+   (define (r-s-walk! t)
+     (match-define (r-if c tr fa) t)
+     (gr-e-walk! c)
+     (gr-s-walk! tr)
+     (gr-s-walk! fa))])
+
 (struct *r-for (cond step body)
   #:methods gen:r-statement
   [(define (r-s-write t)
@@ -281,7 +301,7 @@
                           #:proto-only? [proto-only? #f])
   (match-define (*r-fun id args ret body) t)
   (with-r-var-mapping args
-    @dsp{@|vis|@r-ty-write[ret] @sym (@(add-between (map r-write-var-def args) ", "))@(if proto-only? ";" @indent{{@(indentnl)@gr-s-write[body]}})@"\n"}))
+    @dsp{@|vis|@r-ty-write[ret] @sym (@(add-between (map r-write-var-def args) ", "))@(if proto-only? ";" @indent{{@(indentnl)@gr-s-write[body]}})@(if proto-only? "\n" "\n\n")}))
 (define-syntax (r-fun stx)
   (syntax-parse stx
     [(_ ([v-ty v:id] ...) (~datum :) r-ty body ...)
@@ -350,10 +370,13 @@
     (dsp
      (for/list ([i (in-set include-set)])
        (r-include-write i))
+     "\n"
      (for/list ([d (in-set defn-set)])
        (r-defn-write-proto d))
+     "\n"
      (for/list ([d (in-set defn-set)])
-       (r-defn-write d)))))
+       (r-defn-write d))
+     "\n")))
 (define (r-exe . decls)
   (*r-exe decls))
 (define r-exe? *r-exe?)
@@ -373,11 +396,11 @@
 (define ui64 (r-ty-verbatim+include "uint64_t" <stdint.h>))
 (define ui32 (r-ty-verbatim+include "uint32_t" <stdint.h>))
 (define ui16 (r-ty-verbatim+include "uint16_t" <stdint.h>))
-(define ui8 (r-ty-verbatim+include "uint8_t" <stdint.h>))
-(define si64 (r-ty-verbatim+include "int64_t" <stdint.h>))
-(define si32 (r-ty-verbatim+include "int32_t" <stdint.h>))
-(define si16 (r-ty-verbatim+include "int16_t" <stdint.h>))
-(define si8 (r-ty-verbatim+include "int8_t" <stdint.h>))
+(define  ui8 (r-ty-verbatim+include  "uint8_t" <stdint.h>))
+(define si64 (r-ty-verbatim+include  "int64_t" <stdint.h>))
+(define si32 (r-ty-verbatim+include  "int32_t" <stdint.h>))
+(define si16 (r-ty-verbatim+include  "int16_t" <stdint.h>))
+(define  si8 (r-ty-verbatim+include   "int8_t" <stdint.h>))
 
 (define <stdio.h> (r-include "<stdio.h>"))
 (define stdio-printf (*r-fun-extern "printf" <stdio.h>))
@@ -386,6 +409,7 @@
  r-fun
  r-let*
  r-for
+ r-rec
  (contract-out
   [r-char r-ty?] [r-int r-ty?] [r-void r-ty?]
   [ui8 r-ty?] [ui16 r-ty?] [ui32 r-ty?] [ui64 r-ty?]
@@ -395,12 +419,15 @@
   [stdio-printf r-fun?]
   [r-var (-> r-ty? symbol? r-expr?)]
   [r-app (-> r-expr? (listof r-expr?) r-expr?)]
+  [*r-rec (-> (-> r-expr?) r-expr?)]
   [*r-let1 (-> r-var? r-expr? r-statement? r-statement?)]
   [r-while (->* (r-expr?) () #:rest (listof r-statement?) r-statement?)]
   [*r-while (-> r-expr? r-statement? r-statement?)]
   [*r-for (-> r-expr? r-statement? r-statement? r-statement?)]
+  [r-if (-> r-expr? r-statement? r-statement? r-statement?)]
   [r-set! (-> r-lvalue? r-expr? r-expr?)]
   [r-ret (->* () (r-expr?) r-statement?)]
+  [r-begin (-> (listof r-statement?) r-statement?)]
   [*r-fun (-> symbol?
               (listof r-var?)
               r-ty?
