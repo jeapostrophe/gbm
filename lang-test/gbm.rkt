@@ -1,11 +1,12 @@
 #lang racket/base
 (require "r.rkt"
-         "glfw.rkt")
+         "glfw.rkt"
+         (prefix-in stdlib: "stdlib.rkt"))
 
 (define main
   (r-fun ([r-int argc] [(r-ptr (r-ptr r-char)) argv]) : r-int
          (r-unless (glfwInit)
-                   (stdlib:exit EXIT_FAILURE))
+                   (stdlib:exit stdlib:EXIT_FAILURE))
          (glfwWindowHint GLFW_SAMPLES 4)
          (glfwWindowHint GLFW_CONTEXT_VERSION_MAJOR 3)
          (glfwWindowHint GLFW_CONTEXT_VERSION_MINOR 3)

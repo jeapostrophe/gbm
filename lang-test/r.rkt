@@ -289,7 +289,7 @@
 
 (define-generics r-fun)
 
-(struct *r-fun-extern (sym inc)
+(struct r-fun-extern (sym inc)
   #:property prop:procedure
   (λ (t . args)
     (r-app t args))
@@ -297,10 +297,10 @@
   []
   #:methods gen:r-expr
   [(define (r-e-write t)
-     (match-define (*r-fun-extern s i) t)
+     (match-define (r-fun-extern s i) t)
      s)
    (define (r-e-walk! t)
-     (match-define (*r-fun-extern s i) t)
+     (match-define (r-fun-extern s i) t)
      (r-include-walk! i))])
 
 (struct *r-fun (id args ret body)
@@ -354,6 +354,7 @@
                    litc 
                    #:post-options [post '()])
   (*r-include pre litc post))
+(define r-include? *r-include?)
 
 (define-generics r-decl
   [r-decl-walk! r-decl #:deep? bool])
@@ -468,6 +469,7 @@
               (listof r-statement?)
               r-fun?)]
   [r-public-fun (-> string? r-fun? r-decl?)]
+  [r-fun-extern (-> string? r-include? r-fun-extern?)]
   [r-exe (->* () () #:rest (listof r-decl?) r-exe?)]
   [r-emit (-> r-exe? void?)]))
 
@@ -482,7 +484,7 @@
   [r-when (-> r-expr? r-statement? r-statement?)]))
 
 (define-simple-macro (define-r-fn fn:id #:from inc:id)
-  (define fn (*r-fun-extern (symbol->string 'fn) inc)))
+  (define fn (r-fun-extern (symbol->string 'fn) inc)))
 
 (define-simple-macro (define-r-fns #:from inc:id fn:id ...)
   (begin (define-r-fn fn #:from inc) ...))
@@ -498,11 +500,3 @@
          define-r-val
          define-r-vals)
 
-(define <stdio.h> (r-include "<stdio.h>"))
-(define stdio:printf (*r-fun-extern "printf" <stdio.h>))
-(provide <stdio.h> stdio:printf)
-
-(define <stdlib.h> (r-include "<stdlib.h>"))
-(define-r-vals #:from <stdlib.h> EXIT_FAILURE)
-(define stdlib:exit (*r-fun-extern "exit" <stdlib.h>))
-(provide <stdlib.h> stdlib:exit EXIT_FAILURE)

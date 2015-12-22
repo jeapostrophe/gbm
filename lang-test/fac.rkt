@@ -1,5 +1,6 @@
 #lang racket/base
-(require "r.rkt")
+(require "r.rkt"
+         (prefix-in stdio: "stdio.rkt"))
 
 (define fac
   (r-fun ([ui64 n]) : ui64
