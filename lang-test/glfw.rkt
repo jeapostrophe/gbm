@@ -1,6 +1,8 @@
 #lang racket/base
 (require "r.rkt")
 
+;; XXX use doxygen's XML output to get thhe definitions?
+
 (define <GLFW/glfw3.h>
   (r-include
    #:pre-options '("#define GLFW_INCLUDE_GLCOREARB"

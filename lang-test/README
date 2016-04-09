@@ -1,1 +1,12 @@
 XXX Look at https://github.com/cwearl/fulmar
+
+XXX Mark functions with their error-behavior (returns NULL, returns 0
+on success, etc) and mandate checking with a kind of
+safe-app. (http://250bpm.com/blog:68)
+
+XXX Make making intrusive data structures easy
+(http://www.codeofhonor.com/blog/avoiding-game-crashes-related-to-linked-lists)
+
+XXX Is there a cross-platform branch prediction hint? http://250bpm.com/blog:6
+
+XXX https://github.com/bkaradzic/genie or premake

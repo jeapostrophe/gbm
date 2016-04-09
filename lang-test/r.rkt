@@ -10,6 +10,10 @@
          racket/string
          racket/generic)
 
+;; xxx use pprint - http://docs.racket-lang.org/pprint/index.html
+
+;; XXX https://matt.sh/howto-c
+
 (define dsp list)
 (define semi ";")
 

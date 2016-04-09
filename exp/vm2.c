@@ -2,7 +2,7 @@
 
 /* The machine is designed to run at a fixed rate of external
    interaction */
-#define VM_HZ 60
+#define VM_HZ 120
 
 /* The virtual machine loads object files that are like ELF
    files. They have a header and a body of sections. The sections are
@@ -70,7 +70,7 @@ typedef struct {
    OpenGL texture count limit (given the default implementation
    technique.) */
 
-#define VRAM_LAYER_LIMIT 64
+#define VRAM_LAYER_LIMIT 256
 
 /* These numbers are chosen so that you can have a number of static
    sprites (like for the background) equal to the number of tiles in
@@ -83,7 +83,6 @@ typedef struct {
 #define VRAM_STATIC_LIMIT (1<<16)
 #define VRAM_DYNAMIC_LIMIT (1<<15)
 
-
 /* The video system is based on a static set of image data and a small
    number of layers of sprites. The image data (the video ROM)
    contains a palette, a sprite database, and a sprite atlas. The VROM
@@ -91,12 +90,26 @@ typedef struct {
    limit. Following this header, is the actual content in the order:
    palettes, sprite database, sprite atlas. */
 
+/* A palette stores 8 colors from a 6-bit hardware palette (64
+   colors). Each color is a single byte. If a high bit is set, then
+   it is transparent in the palette. */
 typedef struct {
-  uint16_t spr_count;
+  uint8_t colors[8];
+} VROM_pal_t;
+
+/* A sprite in the atlas is 8x8 and uses 3-bit indexed color (8
+   colors), with one extra bit signaling transparency. This means that
+   there are 32 bytes per sprite in the atlas. */
+typedef struct {
+  uint8_t color_indexed[32];
+} VROM_sprite_atlas_t;
+
+typedef struct {
   uint16_t pal_count;
-  uint8_t layer_count; // limited to VRAM_LAYER_LIMIT
-  uint8_t body[];
-} VROM_t;
+  VROM_pal_t pal_db[(1<<16)];
+  uint16_t spr_count;
+  VROM_sprite_atlas_t spr_atlas[(1<<16)];
+} VROM_max_t;
 
 /* Sprites can be displaced, magnified, rotated, alpha-blended, color
    masked and placed on some layer. The particular sprite and palette
@@ -109,6 +122,14 @@ typedef struct {
   uint16_t spr; uint16_t pal;
   uint8_t layer;
   uint8_t r; uint8_t g; uint8_t b;
+} VRAM_sprite_t_complicated;
+
+typedef struct {
+  uint16_t ul_x; uint16_t ul_y;
+  uint16_t spr;
+  uint8_t m; // = XX.xxYY.yy (xx = { 00 = 1, 01 = 2, 10 = 4, 11 = 8 })
+  uint8_t pal; // 0-127 are 0-127 in pal_db, 128-255 are spr+[-64,+63] in pal_db
+  // layer is implicit in location in sprite tree
 } VRAM_sprite_t;
 
 /* Each layer has a center and dimensions. The layers can be scaled
@@ -116,6 +137,8 @@ typedef struct {
    it. The entire layer can be alpha-blended and
    color-masked. Finally, the layer can have wrapping in the X or Y
    direction. */
+
+// This could be shrunk to 16 bytes easily.
 
 typedef struct {
   float cx; float cy;
@@ -126,7 +149,43 @@ typedef struct {
   float a; uint8_t r; uint8_t g; uint8_t b;
   uint8_t wrapx; uint8_t wrapy;
   uint8_t layer_padding[12];
+} VRAM_layer_t_complicated;
+
+typedef struct {
+  uint16_t ul_x; uint16_t ul_y;
+  uint16_t w; uint16_t h;
+
+  uint16_t spr_span;
+
+  uint16_t mode7_horizon; uint8_t mode7_fov;
+
+  uint8_t mx; uint8_t my; // MMMMMM.mm where mm has same format as xx in sprite
+
+  uint8_t flags;
+  // 2 = { mode7-off, mode7-floor, mode7-ceiling, mode7-cylinder }
+  // 1 = wrap-x
+  // 1 = wrap-y
 } VRAM_layer_t;
+
+/* A screen is 256x256 and is represented in the 6-bit color space
+   (where high bits are transparent.)
+ */
+
+typedef struct {
+  uint8_t pixels[256][256];
+} VRAM_screen_t;
+
+/* The buffer (for the real screen) is in 32-bit space */
+
+typedef struct {
+  uint32_t pixels[256][256];
+} VRAM_buffer_t;
+
+typedef struct {
+  VRAM_screen_t layers[16];
+  VRAM_buffer_t buf;
+} VRAM_screens_t;
+
 
 /* The VRAM state contains two separate sprite trees, one that is
    large and is intended to not change regularly, but can, and the
@@ -339,17 +398,25 @@ typedef struct {
 
 void show_size(const char *label, size_t limit) {
   double flimit = limit;
-  printf("%21s = %8lu = %8.2f Ki = %5.2f Mi\n",
+  printf("%25s = %8lu = %8.2f Ki = %5.2f Mi\n",
          label, limit, flimit/1024.0, (flimit/1024.0)/1024.0);
 }
 
 void show_sizes() {
+  show_size("VM_HZ", VM_HZ);
+  printf("\n");
+  
   show_size("PROM limit", PROM_LIMIT);
   show_size("ROM limit", ROM_LIMIT);
-  show_size("VROM limit", VROM_LIMIT);
   show_size("RAM limit", RAM_LIMIT);
   show_size("ROM_header_t", sizeof(ROM_header_t));
   show_size("ROM_max_t", sizeof(ROM_max_t));
+  printf("\n");
+
+  show_size("VROM limit", VROM_LIMIT);
+  show_size("VROM_pal_t", sizeof(VROM_pal_t));
+  show_size("VROM_sprite_atlas_t", sizeof(VROM_sprite_atlas_t));
+  show_size("VROM_max_t", sizeof(VROM_max_t));
   printf("\n");
 
   show_size("VRAM_sprite_t", sizeof(VRAM_sprite_t));
@@ -360,6 +427,12 @@ void show_sizes() {
   show_size("VRAM_t", sizeof(VRAM_t));
   printf("\n");
 
+  show_size("VRAM_screen_t", sizeof(VRAM_screen_t));
+  show_size("VRAM_buffer_t", sizeof(VRAM_buffer_t));
+  show_size("VRAM_screens_t", sizeof(VRAM_screens_t));
+  printf("\n");
+
+  show_size("AUDIO_SAMPLES_PER_FRAME", AUDIO_SAMPLES_PER_FRAME);
   show_size("AUDIO_sample_t", sizeof(AUDIO_sample_t));
   show_size("AUDIO_samples_t", sizeof(AUDIO_samples_t));
   show_size("ARAM_t", sizeof(ARAM_t));

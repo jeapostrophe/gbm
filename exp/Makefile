@@ -8,9 +8,9 @@ vm2: vm2.c
 	cc $(CFLAGS) -o $@ $^
 
 vm2-test: vm2 bytecode-vm fac.bin
-	#./vm2
 	./bytecode-vm fac.bin
 	./bytecode-vm 10000 12
+	./vm2
 
 fac.bin: fac.rkt bytecode.rkt
 	raco test bytecode.rkt

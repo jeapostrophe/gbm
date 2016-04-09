@@ -17,6 +17,8 @@ TODO:
 - Expand language & port sound & graphics code
 
 IDEAS:
+- OpenGL 3.1 appears to be the most compatible... what do i have now?
+
 - interim has a simple JIT that is neat
 https://github.com/mntmn/interim/blob/master/sledge/jit_x64.c
 
