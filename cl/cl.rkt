@@ -112,12 +112,14 @@
   (or/c unsigned? signed? float? char? string?))
 
 (define-type CPP
-  (CHeader [pre (listof string?)]
+  (CHeader [cflags (listof string?)]
+           [ldflags? (listof string?)]
+           [pre (listof string?)]
            [litc string?]
            [post (listof string?)]))
 
 (define <stdint.h>
-  (CHeader '() "<stdint.h>" '()))
+  (CHeader '() '() '() "<stdint.h>" '()))
 
 (define (Lval? x)
   (or ($aref? x)
@@ -181,12 +183,14 @@
   ($return))
 
 (define-type Decl
-  ;; XXX allow naming of types
+  ;; XXX allow naming of types for libraries
   ($extern [h CHeader?] [n CName?])
   ($proc [hn symbol?] [ty Fun?] [body Stmt?])
   ($var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
 
 (define-type Unit
+  ($cflags [flags (listof string?)] [u Unit?])
+  ($ldflags [flags (listof string?)] [u Unit?])  
   ($exe [main $proc?])
   ($lib [ds (hash/c CName? Decl?)]))
 
@@ -200,21 +204,30 @@
 (define (gencsym [s 'c])
   (symbol->string (gensym (regexp-replace* #rx"[^A-Za-z_0-9]" (format "_~a" s) "_"))))
 
-(struct emit-ctxt (is ds n->d d->n v->vn))
+(struct emit-ctxt (cflags ldflags is ds n->d d->n v->vn))
 (define (make-emit-ctxt)
-  (emit-ctxt (mutable-seteq <stdint.h>) (mutable-seteq)
+  (emit-ctxt (mutable-set) (mutable-set)
+             (mutable-seteq <stdint.h>) (mutable-seteq)
              (make-hash) (make-hash)
              (hasheq)))
-(define (emit!add-decl! ec d)
+(define (ec-add-cfs! ec a-cfs)
+  (define cfs (emit-ctxt-cflags ec))
+  (for ([e (in-list a-cfs)])
+    (set-add! cfs e)))
+(define (ec-add-lfs! ec a-lfs)
+  (define lfs (emit-ctxt-ldflags ec))
+  (for ([e (in-list a-lfs)])
+    (set-add! lfs e)))
+(define (ec-add-decl! ec d)
   (set-add! (emit-ctxt-ds ec) d))
-(define (emit!add-named! ec n d)
+(define (ec-add-named! ec n d)
   (define n->d (emit-ctxt-n->d ec))
   (define d->n (emit-ctxt-d->n ec))
   (if (hash-has-key? n->d n)
-      (error 'emit!add-named! "~a is already used" n)
+      (error 'ec-add-named! "~a is already used" n)
       (begin (hash-set! n->d n d)
              (hash-set! d->n d n))))
-(define (emit!name! ec d)
+(define (ec-name! ec d)
   (define n->d (emit-ctxt-n->d ec))
   (define d->n (emit-ctxt-d->n ec))
   (define hn
@@ -240,7 +253,7 @@
 (define (pp:include ec i)
   (match-type
    CPP i
-   [(CHeader pre litc post)
+   [(CHeader _ _ pre litc post)
     (pp:v-append (apply pp:v-append (map pp:text pre))
                  (pp:hs-append (pp:text "#include") (pp:text litc))
                  (apply pp:v-append (map pp:text post)))]))
@@ -268,7 +281,7 @@
                (error 'pp:var "Unbound identifier: ~e" v)))))
 
 (define (pp:dref ec d)
-  (define-values (global? n) (emit!name! ec d))
+  (define-values (global? n) (ec-name! ec d))
   (pp:text n))
 
 (define (pp:ty ec t
@@ -405,7 +418,7 @@
     (pp:h-append (pp:text "return") pp:semi)]))
 
 (define (pp:decl ec d #:proto-only? [proto-only? #f])
-  (define-values (global? n) (emit!name! ec d))
+  (define-values (global? n) (ec-name! ec d))
   (define maybe-static
     (if global? pp:empty (pp:h-append (pp:text "static") pp:space)))
   (match-type
@@ -458,6 +471,11 @@
                        pp:semi)))]))
 
 (define (walk-h! ec h)
+  (match-type
+   CPP h
+   [(CHeader cfs lfs _ _ _)
+    (ec-add-cfs! ec cfs)
+    (ec-add-lfs! ec lfs)])
   (define is (emit-ctxt-is ec))
   (set-add! is h))
 
@@ -547,7 +565,7 @@
     (void)]))
 
 (define (walk-decl! ec d)
-  (emit!add-decl! ec d)
+  (ec-add-decl! ec d)
   (match-type
    Decl d
    [($extern h n)
@@ -559,63 +577,99 @@
     (walk-ty! ec ty)
     (walk-expr! ec v)]))
 
-(define (emit! ec)
+(define (pp:ec ec)
   (define is (emit-ctxt-is ec))
   (define ds (emit-ctxt-ds ec))
   (for ([d (in-list (set->list ds))])
     (walk-decl! ec d))
-  (define d
-    (pp:v-append (apply pp:v-append
-                        (for/list ([i (in-set is)])
-                          (pp:include ec i)))
-                 pp:line
-                 (apply pp:v-append
-                        (for/list ([i (in-set ds)])
-                          (pp:decl ec i #:proto-only? #t)))
-                 pp:line
-                 (apply pp:v-append
-                        (for/list ([i (in-set ds)])
-                          (pp:h-append (pp:decl ec i) pp:line)))))
-  (pp:pretty-print d))
+  (pp:v-append (apply pp:v-append
+                      (for/list ([i (in-set is)])
+                        (pp:include ec i)))
+               pp:line
+               (apply pp:v-append
+                      (for/list ([i (in-set ds)])
+                        (pp:decl ec i #:proto-only? #t)))
+               pp:line
+               (apply pp:v-append
+                      (for/list ([i (in-set ds)])
+                        (pp:h-append (pp:decl ec i) pp:line)))))
 
-(define (emit u)
+(define (pp:unit ec u)
   (match-type
    Unit u
+   [($cflags cfs u)
+    (ec-add-cfs! ec cfs)
+    (pp:unit ec u)]
+   [($ldflags lfs u)
+    (ec-add-lfs! ec lfs)
+    (pp:unit ec u)]
    [($exe m)
-    (emit ($lib (hash "main" m)))]
+    (pp:unit ec ($lib (hash "main" m)))]
    [($lib ds)
-    (define ec (make-emit-ctxt))
     (for ([(n d) (in-hash ds)])
-      (emit!add-decl! ec d)
-      (emit!add-named! ec n d))
-    (emit! ec)]))
+      (ec-add-decl! ec d)
+      (ec-add-named! ec n d))
+    (pp:ec ec)]))
 
-(define (run u)
-  (local-require racket/file
-                 racket/system)
-  (define (delete-file* p)
-    (when (file-exists? p)
-      (delete-file p)))
-  (unless ($exe? u)
-    (error 'run "Can only execute exe: ~e" u))
-  (define c (make-temporary-file "~a.c"))
+(struct emit-result (cflags ldflags doc))
+
+(define (emit u)
+  (define ec (make-emit-ctxt))
+  (define d (pp:unit ec u))
+  (emit-result (set->list (emit-ctxt-cflags ec))
+               (set->list (emit-ctxt-ldflags ec))
+               d))
+
+(define (er-print! er)
+  (pp:pretty-print (emit-result-doc er)))
+
+(define (emit! u)
+  (er-print! (emit u)))
+
+(require racket/file
+         racket/system)
+(define (delete-file* p)
+  (when (file-exists? p)
+    (delete-file p)))
+
+(define (call-with-temporary pt t)
+  (define p (make-temporary-file pt))
   (dynamic-wind
     void
+    (λ () (t p))
     (λ ()
-      (with-output-to-file c #:exists 'replace (λ () (emit u)))
-      (define o (make-temporary-file "~a.bin"))
-      (dynamic-wind
-        void
-        (λ ()
-          (system* (find-executable-path "cc") c "-o" o)
-          (system* o))
-        (λ ()
-          (delete-file* o))))
-    (λ ()
-      (delete-file* c))))
+      (delete-file* p))))
+
+(define (run u)
+  (define er (emit u))
+  (call-with-temporary
+   "~a.c"
+   (λ (c)
+     (with-output-to-file c #:exists 'replace (λ () (er-print! er)))
+     (call-with-temporary
+      "~a.o"
+      (λ (o)
+        (define cc-pth (find-executable-path "cc"))
+        (apply system* cc-pth (append (emit-result-cflags er) (list c "-c" "-o" o)))
+        (call-with-temporary
+         "~a.bin"
+         (λ (b)
+           (apply system* cc-pth
+                  (append (list o) (emit-result-ldflags er) (list "-o" b)))
+           (system* b))))))))
 
 ;; Convenience
 (define arg cons)
+
+(define ($default-flags u)
+  ($cflags '("-Wall" "-Wextra" "-Weverything" "-Wpedantic" "-Wshadow"
+             "-Wstrict-overflow" "-fno-strict-aliasing"
+             "-Wno-unused-parameter" "-Wno-unused-function"
+             "-Werror" "-pedantic" "-std=c99" "-O3" "-march=native"
+             "-fno-stack-protector" "-ffunction-sections" "-fdata-sections"
+             "-fno-unwind-tables" "-fno-asynchronous-unwind-tables" "-fno-math-errno"
+             "-fmerge-all-constants" "-fno-ident" "-fPIE" "-fPIC")
+           ($ldflags '("-dead_strip") u)))
 
 (define ($let* ty n e b)
   ($let1 ty n ($seq ($set! ($vref n) e) b)))
@@ -633,7 +687,7 @@
      ($seq s (apply $begin ss))]))
 
 ;; Tests
-(define <stdio.h> (CHeader '() "<stdio.h>" '()))
+(define <stdio.h> (CHeader '() '() '() "<stdio.h>" '()))
 (define stdio:printf ($extern <stdio.h> "printf"))
 
 (module* ex:fac #f
@@ -668,15 +722,18 @@
                        ($do ($app ($dref stdio:printf)
                                   (list ($val (format "~a r = %llu\n" which))
                                         ($vref 'r)))))))
-             ($begin (test-fac "iter" fac)
-                     (test-fac " rec" fac-rec)
-                     ($ret ($val 0))))))
+             ($begin
+              ($do ($vref 'argc))
+              ($do ($vref 'argv))
+              (test-fac "iter" fac)
+              (test-fac " rec" fac-rec)
+              ($ret ($val 0))))))
 
   (define this
-    ($exe main))
+    ($default-flags ($exe main)))
 
   (module+ test
-    (emit this)
+    (emit! this)
     (run this)))
 
 (module+ test
