@@ -133,8 +133,9 @@
   Size Char
   UI8 UI16 UI32 UI64
   SI8 SI16 SI32 SI64
-  F32 F64
+  F32 F64 F128
   Void
+  ;; xxx intptr_t?
   (Record [fields (listof (cons/c Field? Type?))])
   (Ptr [ty Type?])
   (Arr [ty Type?] [k unsigned?])
@@ -148,7 +149,7 @@
 (define String (Ptr Char))
 
 (define-type Op1
-  $sizeof ;; XXX actual special, because references a ty
+  $sizeof ;; XXX actually special, because references a ty
   ;; XXX add offset of
   $! $neg $bneg)
 
@@ -161,6 +162,7 @@
 (define-type Expr
   ($op1 [op Op1?] [arg Expr?])
   ($op2 [lhs Expr?] [op Op2?] [rhs Expr?])
+  ;; xxx array/union/struct literals
   ($val [v Val?])
   ($app [rator Expr?] [rands (listof Expr?)])
   ($aref [lhs Expr?] [rhs Expr?])
@@ -170,7 +172,9 @@
   ($dref [d Decl?])
   ($ddref [-d (-> Decl?)])
   ($fref [obj Expr?] [f Field?])
-  ($ife [test Expr?] [if1 Expr?] [if0 Expr?]))
+  ($ife [test Expr?] [if1 Expr?] [if0 Expr?])
+  ;; xxx add seal/unseal
+  )
 
 (define-type Stmt
   ($seq [fst Stmt?] [snd Stmt?])
@@ -303,6 +307,7 @@
    [(SI8) (pp:ty-name "int8_t")] [(SI16) (pp:ty-name "int16_t")]
    [(SI32) (pp:ty-name "int32_t")] [(SI64) (pp:ty-name "int64_t")]
    [(F32) (pp:ty-name "float")] [(F64) (pp:ty-name "double")]
+   [(F128) (pp:ty-name "long double")]
    [(Void) (pp:ty-name "void")]
    [(Record fs) (xxx 'record)]
    [(Ptr t)
@@ -485,7 +490,7 @@
    [(Size) (void)] [(Char) (void)]
    [(UI8) (void)] [(UI16) (void)] [(UI32) (void)] [(UI64) (void)]
    [(SI8) (void)] [(SI16) (void)] [(SI32) (void)] [(SI64) (void)]
-   [(F32) (void)] [(F64) (void)]
+   [(F32) (void)] [(F64) (void)] [(F128) (void)]
    [(Void) (void)]
    [(Record fs)
     (for ([f*t (in-list fs)])
@@ -580,6 +585,7 @@
 (define (pp:ec ec)
   (define is (emit-ctxt-is ec))
   (define ds (emit-ctxt-ds ec))
+  ;; XXX type-check during walk?
   (for ([d (in-list (set->list ds))])
     (walk-decl! ec d))
   (pp:v-append (apply pp:v-append
@@ -686,11 +692,16 @@
     [(cons s ss)
      ($seq s (apply $begin ss))]))
 
+;; xxx when, unless
+
 ;; Tests
 (define <stdio.h> (CHeader '() '() '() "<stdio.h>" '()))
 (define stdio:printf ($extern <stdio.h> "printf"))
 
 (module* ex:fac #f
+  ;; XXX add macros for $proc and $let that use racket-level binding
+  ;; XXX alias $val to $v or just $
+  ;; XXX alias ops to $op1/2-less forms
   (define fac-rec
     ($proc 'fac-rec (Fun (list (arg 'n UI64)) UI64)
            ($if ($op2 ($vref 'n) $<= ($val 0))
