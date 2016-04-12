@@ -124,7 +124,8 @@
       ($pref? x)
       ($vref? x)
       ($dref? x)
-      ($fref? x)))
+      ($sref? x)
+      ($uref? x)))
 
 (define-type Type
   ;; From C
@@ -144,16 +145,66 @@
   (Delay [-ty (-> Type?)])
   (Seal [n Seal-Id?] [ty Type?]))
 
+(define (Union-ty ec u f)
+  (match-define (Union tys) u)
+  (match (assq f tys)
+    [(cons _ t) t]
+    [#f (ec-fail! ec (format "~e not a variant of union ~e" f u))]))
+(define (Record-field-ty ec r f)
+  (match-define (Record fs) r)
+  (match (assq f fs)
+    [(cons _ t) t]
+    [#f (ec-fail! ec (format "~e not a field of record ~e" f r))]))
+
 (define String (Ptr Char))
+(define Bool (Seal 'Bool UI8))
 
 (define-type Op1
   $! $neg $bneg)
+
+(define (ec-check-op1-ty! ec o at)
+  (xxx 'ec-check-op1-ty! ec o at))
 
 (define-type Op2
   $+ $- $* $/ $%
   $== $!= $> $< $>= $<=
   $and $or
   $band $bior $bxor $bshl $bshr)
+
+(define Integer-Types
+  (list Size Char
+        UI8 UI16 UI32 UI64
+        SI8 SI16 SI32 SI64))
+(define Numeric-Types
+  (list* F32 F64 F128 Integer-Types))
+
+(define (ec-check-op2-ty! ec at o bt)
+  (cond
+    [(memq o (list $+ $- $* $/ $% $== $!= $> $< $>= $<= $and $or))
+     ;; These operations require equal types
+     (ec-check-ty! ec at bt)
+     (cond
+       ;; These consumes and produce Bools
+       [(memq o (list $and $or))
+        (ec-check-ty! ec bt Bool)]
+       ;; These consume numbers and produce Bools
+       [(memq o (list $> $< $>= $<=))
+        (ec-check-ty-in! ec bt Numeric-Types)
+        Bool]
+       ;; These consume numbers and pointers and produce Bools
+       [(memq o (list $== $!=))
+        (ec-check-ty-in-or-?! ec bt Numeric-Types Ptr?)
+        Bool]
+       ;; These consume integers and produce integers
+       [(memq o (list $%))
+        (ec-check-ty-in! ec bt Integer-Types)]
+       ;; These consume numbers and produce the kind of number that went in
+       [(memq o (list $+ $- $* $/))
+        (ec-check-ty-in! ec bt Numeric-Types)]
+       [else
+        (xxx 'ec-check-op2-ty! ec at o bt)])]
+    [else
+     (xxx 'ec-check-op2-ty! ec at o bt)]))
 
 (define-type Literal
   $NULL
@@ -163,14 +214,52 @@
   ($array [vs (vectorof Val?)]))
 
 (define Val?
-  (or/c unsigned? signed? float? char? string? Literal?))
+  (or/c boolean? unsigned? signed? float? char? string? Literal?))
+
+(define ((unsigned/bits? bits) x)
+  (and (exact-integer? x)
+       (not (negative? x))
+       (<= (integer-length x) bits)))
+(define ((signed/bits? bits) x)
+  (and (exact-integer? x)
+       (<= (integer-length x) (sub1 bits))))
+
+(define (val-? ec ct)
+  (match ct
+    [(Size) (val-? UI64)]
+    [(Char) char?]
+    [(UI8) (unsigned/bits? 8)]
+    [(UI16) (unsigned/bits? 16)]
+    [(UI32) (unsigned/bits? 32)]
+    [(UI64) (unsigned/bits? 64)]
+    [(SI8) (signed/bits? 8)]
+    [(SI16) (signed/bits? 16)]
+    [(SI32) (signed/bits? 32)]
+    [(SI64) (signed/bits? 64)]
+    [(F32) single-flonum?]
+    [(F64) double-flonum?]
+    [(F128) double-flonum?]
+    [(Ptr (Char)) bytes?]
+    [(Seal 'Bool (UI8)) boolean?]
+    [else
+     (ec-fail! ec (format "invalid type for value: ~e" ct))]))
+
+(define (ec-check-val-ty! ec v ct)
+  (cond
+    [(Literal? ct)
+     (xxx 'ec-check-val-ty! ec v ct)]
+    [else
+     (define ? (val-? ec ct))
+     (unless (? v)
+       (ec-fail! ec (format "~e should match ~e" v ?)))
+     ct]))
 
 (define-type Expr
   ($sizeof [ty Type?])
-  ($offsetof [ty Type?] [f Field?])
+  ($offsetof [ty Record?] [f Field?])
   ($op1 [op Op1?] [arg Expr?])
   ($op2 [lhs Expr?] [op Op2?] [rhs Expr?])
-  ($val [v Val?])
+  ($val [t Type?] [v Val?])
   ($app [rator Expr?] [rands (listof Expr?)])
   ($aref [lhs Expr?] [rhs Expr?])
   ($addr [arg Expr?])
@@ -178,7 +267,8 @@
   ($vref [v Var?])
   ($dref [d Decl?])
   ($ddref [-d (-> Decl?)])
-  ($fref [obj Expr?] [f Field?])
+  ($sref [obj Expr?] [f Field?])
+  ($uref [obj Expr?] [f Field?])
   ($ife [test Expr?] [if1 Expr?] [if0 Expr?])
   ($seal [s Seal-Id?] [e Expr?])
   ($unseal [s Seal-Id?] [e Expr?]))
@@ -216,12 +306,12 @@
 (define (gencsym [s 'c])
   (symbol->string (gensym (regexp-replace* #rx"[^A-Za-z_0-9]" (format "_~a" s) "_"))))
 
-(struct emit-ctxt (cflags ldflags is ds n->d d->n v->vn))
+(struct emit-ctxt (cflags ldflags is ds n->d d->n d->ty v->vn v->ty))
 (define (make-emit-ctxt)
   (emit-ctxt (mutable-set) (mutable-set)
              (mutable-seteq <stdint.h>) (mutable-seteq)
-             (make-hash) (make-hash)
-             (hasheq)))
+             (make-hash) (make-hasheq) (make-hasheq)
+             (hasheq) (hasheq)))
 (define (ec-add-cfs! ec a-cfs)
   (define cfs (emit-ctxt-cflags ec))
   (for ([e (in-list a-cfs)])
@@ -255,11 +345,46 @@
   (define n (hash-ref! d->n d (λ () (gencsym hn))))
   (values (hash-has-key? n->d n)
           n))
-(define (ec-extend-ns ec v)
+(define (ec-extend-ns ec v*t)
+  (match-define (cons v t) v*t)
   (define vn (gencsym v))
-  (values vn
-          (struct-copy emit-ctxt ec
-                       [v->vn (hash-set (emit-ctxt-v->vn ec) v vn)])))
+  (struct-copy emit-ctxt ec
+               [v->vn (hash-set (emit-ctxt-v->vn ec) v vn)]
+               [v->ty (hash-set (emit-ctxt-v->ty ec) v t)]))
+(define (ec-extend-ns* ec ds)
+  (for/fold ([ec ec])
+            ([d (in-list ds)])
+    (ec-extend-ns ec d)))
+(define (ec-var-name ec v)
+  (hash-ref (emit-ctxt-v->vn ec) v
+            (λ ()
+              (ec-fail! ec (format "Unbound identifier: ~e" v)))))
+(define (ec-var-ty ec v)
+  (hash-ref (emit-ctxt-v->ty ec) v
+            (λ ()
+              (ec-fail! ec (format "Unbound identifier: ~e" v)))))
+
+(define (ec-fail! ec msg)
+  (error 'emit msg))
+(define (ec-check-ty?! ec t ?)
+  ;; xxx deal with delayed type
+  (unless (? t)
+    (ec-fail! ec (format "~e should match ~e" t ?))))
+(define (ec-check-eq?! ec x y)
+  (xxx 'ec-check-eq?! ec x y))
+(define (ec-check-ty! ec x y)
+  (cond
+    [y
+     (cond
+       [(eq? x y)
+        y]
+       [else (xxx 'ec-check-ty! ec x y)])]
+    [else
+     x]))
+(define (ec-check-ty-in! ec t ts)
+  (xxx 'ec-check-ty-in! ec t ts))
+(define (ec-check-ty-in-or-?! ec t ts ?)
+  (xxx 'ec-check-ty-in-or-?! ec t ts ?))
 
 (define pp:xxx (pp:text "xxx"))
 
@@ -288,10 +413,7 @@
   (pp:text f))
 
 (define (pp:var ec v)
-  (pp:text
-   (hash-ref (emit-ctxt-v->vn ec) v
-             (λ ()
-               (error 'pp:var "Unbound identifier: ~e" v)))))
+  (pp:text (ec-var-name ec v)))
 
 (define (pp:dref ec d)
   (define-values (global? n) (ec-name! ec d))
@@ -371,7 +493,8 @@
     (pp:h-append pp:lparen (pp:expr ec a) pp:space
                  (pp:op2 o) pp:space
                  (pp:expr ec b) pp:rparen)]
-   [($val v)
+   [($val t v)
+    ;; XXX put in cast?
     (pp:val v)]
    [($app r rs)
     (pp:h-append (pp:expr ec r) pp:lparen
@@ -391,8 +514,10 @@
     (pp:dref ec d)]
    [($ddref -d)
     (pp:dref ec (-d))]
-   [($fref a f)
+   [($sref a f)
     (pp:h-append pp:lparen (pp:expr ec a) pp:rparen (pp:char #\*) (pp:field f))]
+   [($uref a f)
+    (pp:expr ec ($sref a f))]
    [($ife a b c)
     (pp:hs-append pp:lparen (pp:expr ec a) (pp:char #\?)
                   (pp:expr ec b) (pp:char #\:)
@@ -436,7 +561,8 @@
                  pp:line
                  pp:rbrace)]
    [($let1 t v b)
-    (define-values (vn ec-p) (ec-extend-ns ec v))
+    (define ec-p (ec-extend-ns ec (cons v t)))
+    (define vn (ec-var-name ec v))
     (pp:h-append pp:lbrace pp:space (pp:ty ec t #:name vn) pp:semi
                  (pp:nest NEST (pp:h-append pp:line (pp:stmt ec-p b))) pp:rbrace)]
    [($set! l r)
@@ -458,16 +584,7 @@
         (pp:h-append (pp:text "typedef") pp:space (pp:ty ec t #:name n) pp:semi)
         pp:empty)]
    [($proc hn (and t (Fun dom rng)) b)
-    (define-values (vns ec-p)
-      (let loop ([rvns '()]
-                 [ec ec]
-                 [dom dom])
-        (match dom
-          ['()
-           (values (reverse rvns) ec)]
-          [(cons (cons v t) dom)
-           (define-values (vn ec-p) (ec-extend-ns ec v))
-           (loop (cons vn rvns) ec-p dom)])))
+    (define ec-p (ec-extend-ns* ec dom))
     (pp:h-append
      maybe-static
      (pp:h-append
@@ -476,9 +593,9 @@
                     (apply pp:hs-append
                            (pp:apply-infix
                             pp:comma
-                            (for/list ([v*t (in-list dom)]
-                                       [vn (in-list vns)])
+                            (for/list ([v*t (in-list dom)])
                               (match-define (cons v t) v*t)
+                              (define vn (ec-var-name ec v))
                               (if proto-only?
                                   (pp:ty ec t)
                                   (pp:ty ec t #:name vn)))))
@@ -540,92 +657,147 @@
    [(Seal n t)
     (walk-ty! ec t)]))
 
-(define (walk-expr! ec e)
+(define (walk-expr! ec e #:check [ct #f])
   (match-type
    Expr e
    [($sizeof t)
-    (walk-ty! ec t)]
+    (walk-ty! ec t)
+    (ec-check-ty! ec Size ct)]
    [($offsetof t f)
-    (walk-ty! ec t)]
+    (walk-ty! ec t)
+    (define ft (Record-field-ty ec t f))
+    (ec-check-ty! ec Size ct)]
    [($op1 o a)
-    (walk-expr! ec a)]
+    (define at (walk-expr! ec a))
+    (define rt (ec-check-op1-ty! ec o at))
+    (ec-check-ty! ec rt ct)]
    [($op2 a o b)
-    (walk-expr! ec a)
-    (walk-expr! ec b)]
-   [($val v)
-    (void)]
+    (define at (walk-expr! ec a))
+    (define bt (walk-expr! ec b))
+    (define rt (ec-check-op2-ty! ec at o bt))
+    (ec-check-ty! ec rt ct)]
+   [($val t v)
+    (walk-ty! ec t)
+    (ec-check-val-ty! ec v (or t ct))
+    (ec-check-ty! ec t ct)]
    [($app r rs)
-    (walk-expr! ec r)
-    (for-each (λ (r) (walk-expr! ec r)) rs)]
+    (define rt (walk-expr! ec r))
+    (ec-check-ty?! ec rt Fun?)
+    (match-define (Fun dom rng) rt)
+    (for ([r (in-list rs)]
+          [v*rt (in-list dom)])
+      (walk-expr! ec r #:check (cdr v*rt)))
+    (ec-check-ty! ec rng ct)]
    [($aref a b)
-    (walk-expr! ec a)
-    (walk-expr! ec b)]
+    (define at (walk-expr! ec a))
+    (ec-check-ty?! ec at Arr?)
+    (match-define (Arr et _) at)
+    (walk-expr! ec b #:check Size)
+    (ec-check-ty! ec et ct)]
    [($addr a)
-    (walk-expr! ec a)]
+    (define at (walk-expr! ec a))
+    (ec-check-ty! ec (Ptr at) ct)]
    [($pref a)
-    (walk-expr! ec a)]
+    (define at (walk-expr! ec a))
+    (ec-check-ty?! ec at Ptr?)
+    (match-define (Ptr et) at)
+    (ec-check-ty! ec et ct)]
    [($vref v)
-    (void)]
+    (ec-check-ty! ec (ec-var-ty ec v) ct)]
    [($dref d)
-    (walk-decl! ec d)]
+    (define dt (walk-decl! ec d))
+    (ec-check-ty! ec dt ct)]
    [($ddref -d)
-    (void)]
-   [($fref a f)
-    (walk-expr! ec a)]
+    (walk-expr! ec ($dref (-d)) #:check ct)]
+   [($sref a f)
+    (define at (walk-expr! ec a))
+    (ec-check-ty?! ec at Record?)
+    (define ft (Record-field-ty ec at f))
+    (ec-check-ty! ec ft ct)]
+   [($uref a f)
+    (define at (walk-expr! ec a))
+    (ec-check-ty?! ec at Union?)
+    (define ft (Union-ty ec at f))
+    (ec-check-ty! ec ft ct)]
    [($ife a b c)
-    (walk-expr! ec a)
-    (walk-expr! ec b)
-    (walk-expr! ec c)]
-   [($seal _ e)
-    (walk-expr! ec e)]
-   [($unseal _ e)
-    (walk-expr! ec e)]))
+    (walk-expr! ec a #:check Bool)
+    (walk-expr! ec b #:check ct)
+    (walk-expr! ec c #:check ct)]
+   [($seal s e)
+    (define et (walk-expr! ec e))
+    (ec-check-ty! ec (Seal s et) ct)]
+   [($unseal s e)
+    (define dt (walk-expr! ec e))
+    (ec-check-ty?! ec dt Seal?)
+    (match-define (Seal n et) dt)
+    (ec-check-eq?! ec n s)
+    (ec-check-ty! ec et ct)]))
 
-(define (walk-stmt! ec st)
+(define (ec-check-ret! ec ret?)
+  (xxx 'ec-check-ret! ec ret?))
+
+(define (walk-stmt! ec st
+                    #:ret? ret? 
+                    #:check rt)
   (match-type
    Stmt st
    [($nop)
-    (void)]
+    (ec-check-ret! ec ret?)]
    [($seq a b)
-    (walk-stmt! ec a)
-    (walk-stmt! ec b)]
+    (walk-stmt! ec a #:check rt #:ret? #f)
+    (walk-stmt! ec b #:check rt #:ret? ret?)]
    [($do e)
-    (walk-expr! ec e)]
+    (walk-expr! ec e #:check Void)
+    (ec-check-ret! ec ret?)]
    [($if e s1 s2)
-    (walk-expr! ec e)
-    (walk-stmt! ec s1)
-    (walk-stmt! ec s2)]
+    (walk-expr! ec e #:check Bool)
+    (walk-stmt! ec s1 #:check rt #:ret? ret?)
+    (walk-stmt! ec s2 #:check rt #:ret? ret?)]
    [($while e s1)
-    (walk-expr! ec e)
-    (walk-stmt! ec s1)]
+    (walk-expr! ec e #:check Bool)
+    (walk-stmt! ec s1 #:check rt #:ret? ret?)]
    [($let1 t v b)
-    (walk-stmt! ec b)]
+    (define ec-p (ec-extend-ns ec (cons v t)))
+    (walk-stmt! ec-p b #:check rt #:ret? ret?)]
    [($set! l r)
-    (walk-expr! ec r)]
+    (define t (walk-expr! ec l))
+    (walk-expr! ec r #:check t)
+    (ec-check-ret! ec ret?)]
    [($ret v)
-    (walk-expr! ec v)]
+    (walk-expr! ec v #:check rt)]
    [($return)
-    (void)]))
+    (ec-check-ty! ec Void rt)]))
 
 (define (walk-decl! ec d)
-  (ec-add-decl! ec d)
-  (match-type
-   Decl d
-   [($extern h n)
-    (walk-h! ec h)]
-   [($typedef hn t)
-    (walk-ty! ec t)]
-   [($proc hn ty b)
-    (walk-ty! ec ty)
-    (walk-stmt! ec b)]
-   [($var hn ty v)
-    (walk-ty! ec ty)
-    (walk-expr! ec v)]))
+  (define d->ty (emit-ctxt-d->ty ec))
+  (cond
+    [(hash-ref d->ty d #f)
+     => (λ (dt) dt)]
+    [else
+     (ec-add-decl! ec d)
+     (match-type
+      Decl d
+      [($extern h n)
+       (define t (Extern h n))
+       (hash-set! d->ty d t)
+       (walk-h! ec h)]
+      [($typedef hn t)
+       (hash-set! d->ty d t)
+       (walk-ty! ec t)]
+      [($proc hn (and t (Fun dom rng)) b)
+       (hash-set! d->ty d t)
+       (walk-ty! ec t)
+       (define ec-p (ec-extend-ns* ec dom))
+       (walk-stmt! ec-p b #:check rng #:ret? #t)
+       t]
+      [($var hn t v)
+       (hash-set! d->ty d t)
+       (walk-ty! ec t)
+       (walk-expr! ec v #:check t)])]))
 
 (define (pp:ec ec)
   (define is (emit-ctxt-is ec))
   (define ds (emit-ctxt-ds ec))
-  ;; XXX type-check during walk?
   (for ([d (in-list (set->list ds))])
     (walk-decl! ec d))
   (pp:v-append (apply pp:v-append
@@ -739,6 +911,10 @@
 
 (define $v $val)
 
+;; XXX exhaustive enum + datatypes
+;; XXX testing & contracts
+;; XXX closures
+
 ;; Tests
 (define <stdio.h> (CHeader '() '() '() "<stdio.h>" '()))
 (define stdio:printf ($extern <stdio.h> "printf"))
@@ -748,42 +924,42 @@
   ;; XXX alias ops to $op1/2-less forms
   (define fac-rec
     ($proc 'fac-rec (Fun (list (arg 'n UI64)) UI64)
-           ($if ($op2 ($vref 'n) $<= ($v 0))
-                ($ret ($v 1))
+           ($if ($op2 ($vref 'n) $<= ($v UI64 0))
+                ($ret ($v UI64 1))
                 ($ret ($op2 ($vref 'n) $*
                             ($app ($ddref (λ () fac-rec))
-                                  (list ($op2 ($vref 'n) $- ($v 1)))))))))
+                                  (list ($op2 ($vref 'n) $- ($v UI64 1)))))))))
 
   (define fac
     ($proc 'fac (Fun (list (arg 'n UI64)) UI64)
-           ($let* UI64 'acc ($v 1)
+           ($let* UI64 'acc ($v UI64 1)
                   ($begin
-                   ($while ($op2 ($vref 'n) $!= ($v 0))
+                   ($while ($op2 ($vref 'n) $!= ($v UI64 0))
                            ($begin
                             ($set! ($vref 'acc) ($op2 ($vref 'acc) $* ($vref 'n)))
-                            ($set! ($vref 'n) ($op2 ($vref 'n) $- ($v 1)))))
+                            ($set! ($vref 'n) ($op2 ($vref 'n) $- ($v UI64 1)))))
                    ($ret ($vref 'acc))))))
 
   (define main
     ($proc 'main (Fun (list (arg 'argc SI32) (arg 'argv (Ptr String))) SI32)
            (let ()
              (define (test-fac which fac)
-               ($let* UI64 'r ($v 0)
+               ($let* UI64 'r ($v SI32 0)
                       ($begin
-                       ($for UI32 'i ($v 0)
-                             ($op2 ($vref 'i) $<= ($v 10000))
-                             ($set! ($vref 'i) ($op2 ($vref 'i) $+ ($v 1)))
-                             ($set! ($vref 'r) ($app ($dref fac) (list ($v 12)))))
+                       ($for UI32 'i ($v UI32 0)
+                             ($op2 ($vref 'i) $<= ($v UI32 10000))
+                             ($set! ($vref 'i) ($op2 ($vref 'i) $+ ($v UI32 1)))
+                             ($set! ($vref 'r) ($app ($dref fac) (list ($v UI64 12)))))
                        ($do ($app ($dref stdio:printf)
-                                  (list ($v (format "~a r = %llu\n" which))
+                                  (list ($v String (format "~a r = %llu\n" which))
                                         ($vref 'r)))))))
              ($begin
-              ($unless ($op2 ($vref 'argc) $== ($v 1))
-                       ($ret ($v 1)))
+              ($unless ($op2 ($vref 'argc) $== ($v SI32 1))
+                       ($ret ($v SI32 1)))
               ($do ($vref 'argv))
               (test-fac "iter" fac)
               (test-fac " rec" fac-rec)
-              ($ret ($v 0))))))
+              ($ret ($v SI32 0))))))
 
   (define this
     ($default-flags ($exe main)))
