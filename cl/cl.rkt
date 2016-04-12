@@ -1052,6 +1052,18 @@
 (define-simple-macro ($app rator rand ...)
   ($%app rator (list rand ...)))
 
+(define-syntax ($cond stx)
+  (syntax-parse stx
+    [(_) (syntax/loc stx $nop)]
+    [(_ [#:else . b])
+     (syntax/loc stx
+       ($begin . b))]
+    [(_ [question:expr . answer] . more)
+     (syntax/loc stx
+       ($if question
+            ($begin . answer)
+            ($cond . more)))]))
+
 ;; XXX guess type
 (define $v $val)
 
