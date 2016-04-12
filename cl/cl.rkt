@@ -1,6 +1,9 @@
 #lang racket/base
 (require racket/contract/base
-         racket/contract/region)
+         racket/contract/region
+         (for-syntax racket/base
+                     syntax/parse)
+         syntax/parse/define)
 
 ;; Libraries
 (require racket/pretty)
@@ -286,8 +289,8 @@
   ($seq [fst Stmt?] [snd Stmt?])
   ($do [e Expr?])
   ($if [test Expr?] [if1 Stmt?] [if0 Stmt?])
-  ($while [test Expr?] [body Stmt?])
-  ($let1 [ty Type?] [v Var?] [body Stmt?])
+  ($%while [test Expr?] [body Stmt?])
+  ($%let1 [ty Type?] [v Var?] [body Stmt?])
   ($set! [lhs Lval?] [rhs Expr?])
   ($ret [val Expr?])
   ($return))
@@ -295,13 +298,13 @@
 (define-type Decl
   ($extern [h CHeader?] [n CName?])
   ($typedef [hn symbol?] [ty Type?])
-  ($proc [hn symbol?] [ty Fun?] [body Stmt?])
+  ($%proc [hn symbol?] [ty Fun?] [body Stmt?])
   ($var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
 
 (define-type Unit
   ($cflags [flags (listof string?)] [u Unit?])
   ($ldflags [flags (listof string?)] [u Unit?])  
-  ($exe [main $proc?])
+  ($exe [main $%proc?])
   ($lib [ds (hash/c CName? Decl?)]))
 
 ;; Compiler
@@ -350,7 +353,7 @@
       (hash-set! d->n d n)
       n]
      [($typedef hn _) hn]
-     [($proc hn _ _) hn]
+     [($%proc hn _ _) hn]
      [($var hn _ _) hn]))
   (define n (hash-ref! d->n d (λ () (gencsym hn))))
   (values (hash-has-key? n->d n)
@@ -449,8 +452,6 @@
    (ec-check-ty?! (ec-fail-ok ec) t ?)
    (ec-fail! ec (format "~e not in ~e and does not match ~e"
                         t ts ?))))
-
-(define pp:xxx (pp:text "xxx"))
 
 (define (pp:include ec i)
   (match-type
@@ -614,7 +615,7 @@
                            (pp:stmt ec s2)))
                  pp:line
                  pp:rbrace)]
-   [($while e s1)
+   [($%while e s1)
     (pp:h-append (pp:hs-append (pp:text "while")
                                pp:lparen (pp:expr ec e) pp:rparen
                                pp:lbrace )
@@ -624,7 +625,7 @@
                            (pp:stmt ec s1)))
                  pp:line
                  pp:rbrace)]
-   [($let1 t v b)
+   [($%let1 t v b)
     (define ec-p (ec-extend-ns ec (cons v t)))
     (define vn (ec-var-name ec-p v))
     (pp:h-append pp:lbrace pp:space (pp:ty ec t #:name vn) pp:semi
@@ -647,7 +648,7 @@
     (if proto-only?
         (pp:h-append (pp:text "typedef") pp:space (pp:ty ec t #:name n) pp:semi)
         pp:empty)]
-   [($proc hn (and t (Fun dom rng)) b)
+   [($%proc hn (and t (Fun dom rng)) b)
     (define ec-p (ec-extend-ns* ec dom))
     (pp:h-append
      maybe-static
@@ -853,10 +854,10 @@
     (walk-expr! ec e #:check Bool)
     (walk-stmt! ec s1 #:check rt #:ret? ret?)
     (walk-stmt! ec s2 #:check rt #:ret? ret?)]
-   [($while e s1)
+   [($%while e s1)
     (walk-expr! ec e #:check Bool)
     (walk-stmt! ec s1 #:check rt #:ret? ret?)]
-   [($let1 t v b)
+   [($%let1 t v b)
     (define ec-p (ec-extend-ns ec (cons v t)))
     (walk-stmt! ec-p b #:check rt #:ret? ret?)]
    [($set! l r)
@@ -891,7 +892,7 @@
        (hash-set! d->ty d t)
        (walk-ty! ec t)
        t]
-      [($proc hn (and t (Fun dom rng)) b)
+      [($%proc hn (and t (Fun dom rng)) b)
        (hash-set! d->ty d t)
        (walk-ty! ec t)
        (define ec-p (ec-extend-ns* ec dom))
@@ -996,12 +997,15 @@
              "-fmerge-all-constants" "-fno-ident" "-fPIE" "-fPIC")
            ($ldflags '("-dead_strip") u)))
 
-(define ($let* ty n e b)
-  ($let1 ty n ($seq ($set! ($vref n) e) b)))
-(define ($for ty n ie te ss b)
-  ($let* ty n ie
-         ($while te
-                 ($seq b ss))))
+(define-simple-macro ($let1 ([ty n e]) . b)
+  (let ([nn (gensym 'n)])
+    ($%let1 ty nn
+            (let ([n ($vref nn)])
+              ($seq ($set! n e) ($begin . b))))))
+(define-simple-macro ($for ([ty n ie]) te ss . b)
+  ($let1 ([ty n ie])
+         ($%while te
+                 ($seq ($begin . b) ss))))
 (define ($begin . ss)
   (match ss
     [(list)
@@ -1011,10 +1015,23 @@
     [(cons s ss)
      ($seq s (apply $begin ss))]))
 
-(define ($when e s)
-  ($if e s ($nop)))
-(define ($unless e s)
-  ($when ($op1 $! e) s))
+(define-simple-macro ($while e . b)
+  ($%while e ($begin . b)))
+(define-simple-macro ($when e . b)
+  ($if e ($begin . b) ($nop)))
+(define-simple-macro ($unless e . b)
+  ($when ($op1 $! e) . b))
+
+(define-syntax ($proc stx)
+  (syntax-parse stx
+    #:literals (Fun)
+    [(_ (Fun ([a:id at:expr] ...) rt:expr)
+        . b)
+     (quasisyntax/loc stx
+       ($%proc (or '#,(syntax-local-name) (gensym '$proc))
+               (Fun (list (arg 'aa at) ...) rt)
+               (let ([a ($vref 'aa)] ...)
+                 ($begin . b))))]))
 
 (define $v $val)
 
@@ -1028,40 +1045,37 @@
 
 (module* ex:fac #f
   (require racket/list)
-  
-  ;; XXX add macros for $proc and $let that use racket-level binding
+
+  ;; XXX make $proc expand to $app
   ;; XXX alias ops to $op1/2-less forms
   (define fac-rec
-    ($proc 'fac-rec (Fun (list (arg 'n UI64)) UI64)
-           ($if ($op2 ($vref 'n) $<= ($v UI64 0))
+    ($proc (Fun ([n UI64]) UI64)
+           ($if ($op2 n $<= ($v UI64 0))
                 ($ret ($v UI64 1))
-                ($ret ($op2 ($vref 'n) $*
+                ($ret ($op2 n $*
                             ($app ($ddref (λ () fac-rec))
-                                  (list ($op2 ($vref 'n) $- ($v UI64 1)))))))))
+                                  (list ($op2 n $- ($v UI64 1)))))))))
 
   (define fac
-    ($proc 'fac (Fun (list (arg 'n UI64)) UI64)
-           ($let* UI64 'acc ($v UI64 1)
-                  ($begin
-                   ($while ($op2 ($vref 'n) $!= ($v UI64 0))
-                           ($begin
-                            ($set! ($vref 'acc) ($op2 ($vref 'acc) $* ($vref 'n)))
-                            ($set! ($vref 'n) ($op2 ($vref 'n) $- ($v UI64 1)))))
-                   ($ret ($vref 'acc))))))
+    ($proc (Fun ([n UI64]) UI64)
+           ($let1 ([UI64 acc ($v UI64 1)])
+                  ($while ($op2 n $!= ($v UI64 0))
+                          ($set! acc ($op2 acc $* n))
+                          ($set! n ($op2 n $- ($v UI64 1))))
+                  ($ret acc))))
 
   (define main
-    ($proc 'main (Fun empty SI32)
+    ($proc (Fun () SI32)
            (let ()
              (define (test-fac which fac)
-               ($let* UI64 'r ($v UI64 0)
-                      ($begin
-                       ($for UI32 'i ($v UI32 0)
-                             ($op2 ($vref 'i) $<= ($v UI32 10000))
-                             ($set! ($vref 'i) ($op2 ($vref 'i) $+ ($v UI32 1)))
-                             ($set! ($vref 'r) ($app ($dref fac) (list ($v UI64 12)))))
+               ($let1 ([UI64 r ($v UI64 0)])
+                      ($for ([UI32 i ($v UI32 0)])
+                            ($op2 i $<= ($v UI32 10000))
+                            ($set! i ($op2 i $+ ($v UI32 1)))
+                            ($set! r ($app ($dref fac) (list ($v UI64 12)))))
                        ($do ($app ($dref stdio:printf)
                                   (list ($v String (format "~a r = %llu\n" which))
-                                        ($vref 'r)))))))
+                                        r)))))
              ($begin
               (test-fac "iter" fac)
               (test-fac " rec" fac-rec)
