@@ -287,7 +287,7 @@
   ($op1 [op Op1?] [arg Expr?])
   ($op2 [lhs Expr?] [op Op2?] [rhs Expr?])
   ($val [t Type?] [v Val?])
-  ($app [rator Expr?] [rands (listof Expr?)])
+  ($%app [rator Expr?] [rands (listof Expr?)])
   ($aref [lhs Expr?] [rhs Expr?])
   ($addr [arg Expr?])
   ($pref [arg Expr?])
@@ -577,7 +577,7 @@
    [($val t v)
     ;; XXX put in cast?
     (pp:val v)]
-   [($app r rs)
+   [($%app r rs)
     (pp:h-append (pp:expr ec r) pp:lparen
                  (apply pp:hs-append
                         (pp:apply-infix pp:comma
@@ -765,7 +765,7 @@
     (walk-ty! ec t)
     (ec-check-val-ty! ec v (or t ct))
     (ec-check-ty! ec t ct)]
-   [($app r rs)
+   [($%app r rs)
     (define rt (walk-expr! ec r))
     (ec-check-ty?! ec rt Fun?)
     (match rt
@@ -1049,6 +1049,9 @@
                (let ([a ($vref 'aa)] ...)
                  ($begin . b))))]))
 
+(define-simple-macro ($app rator rand ...)
+  ($%app rator (list rand ...)))
+
 ;; XXX guess type
 (define $v $val)
 
@@ -1070,7 +1073,7 @@
                 ($ret ($v UI64 1))
                 ($ret ($* n 
                           ($app ($ddref (λ () fac-rec))
-                                (list ($- n ($v UI64 1)))))))))
+                                ($- n ($v UI64 1))))))))
 
   (define fac
     ($proc (Fun ([n UI64]) UI64)
@@ -1088,10 +1091,10 @@
                       ($for ([UI32 i ($v UI32 0)])
                             ($<= i ($v UI32 10000))
                             ($set! i ($+ i ($v UI32 1)))
-                            ($set! r ($app ($dref fac) (list ($v UI64 12)))))
-                       ($do ($app ($dref stdio:printf)
-                                  (list ($v String (format "~a r = %llu\n" which))
-                                        r)))))
+                            ($set! r ($app ($dref fac) ($v UI64 12))))
+                      ($do ($app ($dref stdio:printf)
+                                 ($v String (format "~a r = %llu\n" which))
+                                 r))))
              ($begin
               (test-fac "iter" fac)
               (test-fac " rec" fac-rec)
