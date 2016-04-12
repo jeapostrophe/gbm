@@ -163,24 +163,40 @@
 (define String (Ptr Char))
 (define Bool (Seal 'Bool UI8))
 
-(define-type Op1
-  $! $neg $bneg)
+(define-simple-macro
+  (define-Op1 x [ov iv] ...)
+  (begin (define-type x iv ...)
+         (define-simple-macro (ov a)
+           ($op1 iv a))
+         ...))
+
+(define-Op1 Op1
+  [$! $%!]
+  [$neg $%neg]
+  [$bneg $%bneg])
 
 (define (ec-check-op1-ty! ec o at)
   (match-type
    Op1 o
-   [($!)
+   [($%!)
     (ec-check-ty! ec at Bool)]
-   [($neg)
+   [($%neg)
     (ec-check-ty-in! ec at Numeric-Types)]
-   [($bneg)
+   [($%bneg)
     (ec-check-ty-in! ec at Integer-Types)]))
 
-(define-type Op2
-  $+ $- $* $/ $%
-  $== $!= $> $< $>= $<=
-  $and $or
-  $band $bior $bxor $bshl $bshr)
+(define-simple-macro
+  (define-Op2 x [ov iv] ...)
+  (begin (define-type x iv ...)
+         (define-simple-macro (ov a b)
+           ($op2 a iv b))
+         ...))
+
+(define-Op2 Op2
+  [$+ $%+] [$- $%-] [$* $%*] [$/ $%/] [$% $%%]
+  [$== $%==] [$!= $%!=] [$> $%>] [$< $%<] [$>= $%>=] [$<= $%<=]
+  [$and $%and] [$or $%or]
+  [$band $%band] [$bior $%bior] [$bxor $%bxor] [$bshl $%bshl] [$bshr $%bshr])
 
 (define Integer-Types
   (list Size Char
@@ -191,26 +207,26 @@
 
 (define (ec-check-op2-ty! ec at o bt)
   (cond
-    [(memq o (list $+ $- $* $/ $% $== $!= $> $< $>= $<= $and $or))
+    [(memq o (list $%+ $%- $%* $%/ $%% $%== $%!= $%> $%< $%>= $%<= $%and $%or))
      ;; These operations require equal types
      (ec-check-ty! ec at bt)
      (cond
        ;; These consumes and produce Bools
-       [(memq o (list $and $or))
+       [(memq o (list $%and $%or))
         (ec-check-ty! ec bt Bool)]
        ;; These consume numbers and produce Bools
-       [(memq o (list $> $< $>= $<=))
+       [(memq o (list $%> $%< $%>= $%<=))
         (ec-check-ty-in! ec bt Numeric-Types)
         Bool]
        ;; These consume numbers and pointers and produce Bools
-       [(memq o (list $== $!=))
+       [(memq o (list $%== $%!=))
         (ec-check-ty-in-or-?! ec bt Numeric-Types Ptr?)
         Bool]
        ;; These consume integers and produce integers
-       [(memq o (list $%))
+       [(memq o (list $%%))
         (ec-check-ty-in! ec bt Integer-Types)]
        ;; These consume numbers and produce the kind of number that went in
-       [(memq o (list $+ $- $* $/))
+       [(memq o (list $%+ $%- $%* $%/))
         (ec-check-ty-in! ec bt Numeric-Types)]
        [else
         (xxx 'ec-check-op2-ty! ec at o bt)])]
@@ -522,19 +538,19 @@
     (pp:ty ec t #:name n #:ptrs p)]))
 
 (define pp:op1-table
-  (hasheq $! "!"
-          $neg "-"
-          $bneg "~"))
+  (hasheq $%! "!"
+          $%neg "-"
+          $%bneg "~"))
 (define (pp:op1 o)
   (pp:text
    (hash-ref pp:op1-table o
              (λ () (error 'pp:op1 "Unknown op1: ~e" o)))))
 
 (define pp:op2-table
-  (hasheq $+ "+" $- "-" $* "*" $/ "/" $% "%"
-          $== "==" $!= "!=" $> ">" $< "<" $>= ">=" $<= "<="
-          $and "&&" $or "||"
-          $band "&" $bior "|" $bxor "^" $bshl "<<" $bshr ">>"))
+  (hasheq $%+ "+" $%- "-" $%* "*" $%/ "/" $%% "%"
+          $%== "==" $%!= "!=" $%> ">" $%< "<" $%>= ">=" $%<= "<="
+          $%and "&&" $%or "||"
+          $%band "&" $%bior "|" $%bxor "^" $%bshl "<<" $%bshr ">>"))
 (define (pp:op2 o)
   (pp:text
    (hash-ref pp:op2-table o
@@ -1020,7 +1036,7 @@
 (define-simple-macro ($when e . b)
   ($if e ($begin . b) ($nop)))
 (define-simple-macro ($unless e . b)
-  ($when ($op1 $! e) . b))
+  ($when ($! e) . b))
 
 (define-syntax ($proc stx)
   (syntax-parse stx
@@ -1033,6 +1049,7 @@
                (let ([a ($vref 'aa)] ...)
                  ($begin . b))))]))
 
+;; XXX guess type
 (define $v $val)
 
 ;; XXX exhaustive enum + datatypes
@@ -1046,22 +1063,21 @@
 (module* ex:fac #f
   (require racket/list)
 
-  ;; XXX make $proc expand to $app
-  ;; XXX alias ops to $op1/2-less forms
+  ;; XXX make $proc instance expand to $app
   (define fac-rec
     ($proc (Fun ([n UI64]) UI64)
-           ($if ($op2 n $<= ($v UI64 0))
+           ($if ($<= n ($v UI64 0))
                 ($ret ($v UI64 1))
-                ($ret ($op2 n $*
-                            ($app ($ddref (λ () fac-rec))
-                                  (list ($op2 n $- ($v UI64 1)))))))))
+                ($ret ($* n 
+                          ($app ($ddref (λ () fac-rec))
+                                (list ($- n ($v UI64 1)))))))))
 
   (define fac
     ($proc (Fun ([n UI64]) UI64)
            ($let1 ([UI64 acc ($v UI64 1)])
-                  ($while ($op2 n $!= ($v UI64 0))
-                          ($set! acc ($op2 acc $* n))
-                          ($set! n ($op2 n $- ($v UI64 1))))
+                  ($while ($!= n ($v UI64 0))
+                          ($set! acc ($* acc n))
+                          ($set! n ($- n ($v UI64 1))))
                   ($ret acc))))
 
   (define main
@@ -1070,8 +1086,8 @@
              (define (test-fac which fac)
                ($let1 ([UI64 r ($v UI64 0)])
                       ($for ([UI32 i ($v UI32 0)])
-                            ($op2 i $<= ($v UI32 10000))
-                            ($set! i ($op2 i $+ ($v UI32 1)))
+                            ($<= i ($v UI32 10000))
+                            ($set! i ($+ i ($v UI32 1)))
                             ($set! r ($app ($dref fac) (list ($v UI64 12)))))
                        ($do ($app ($dref stdio:printf)
                                   (list ($v String (format "~a r = %llu\n" which))
