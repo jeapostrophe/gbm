@@ -111,6 +111,7 @@
 (define Field? symbol?)
 (define Seal-Id? symbol?)
 (define Var? symbol?)
+;; xxx should all string? be bytes?
 (define CName? string?)
 
 (define-type CPP
@@ -130,6 +131,8 @@
       ($dref? x)
       ($sref? x)
       ($uref? x)))
+
+;; XXX const
 
 (define-type Type
   ;; From C
@@ -482,6 +485,7 @@
     [(or (? unsigned?)
          (? signed?)
          (? float?))
+     ;; xxx add f or d for float/double?
      (pp:text (number->string v))]
     [(? char?)
      (pp:text (format "'~a'" v))]
@@ -1041,7 +1045,7 @@
 (define-syntax ($proc stx)
   (syntax-parse stx
     #:literals (Fun)
-    [(_ (Fun ([a:id at:expr] ...) rt:expr)
+    [(_ (Fun ([at:expr a:id] ...) rt:expr)
         . b)
      (quasisyntax/loc stx
        ($%proc (or '#,(syntax-local-name) (gensym '$proc))
@@ -1077,5 +1081,6 @@
 ;; XXX exhaustive enum + datatypes
 ;; XXX testing & contracts
 ;; XXX closures
+;; XXX make $proc instance expand to $app
 
 (provide (all-defined-out))

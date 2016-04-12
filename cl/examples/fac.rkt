@@ -1,11 +1,10 @@
 #lang racket/base
 (require "../cl.rkt"
-         (prefix-in stdio: "../h/stdio.rkt")
+         "../h/libc.rkt"
          racket/list)
 
-;; XXX make $proc instance expand to $app
 (define fac-rec
-  ($proc (Fun ([n UI64]) UI64)
+  ($proc (Fun ([UI64 n]) UI64)
          ($if ($<= n ($v UI64 0))
               ($ret ($v UI64 1))
               ($ret ($* n
@@ -13,7 +12,7 @@
                               ($- n ($v UI64 1))))))))
 
 (define fac
-  ($proc (Fun ([n UI64]) UI64)
+  ($proc (Fun ([UI64 n]) UI64)
          ($let1 ([UI64 acc ($v UI64 1)])
                 ($while ($!= n ($v UI64 0))
                         ($set! acc ($* acc n))
@@ -29,7 +28,7 @@
                           ($<= i ($v UI32 10000))
                           ($set! i ($+ i ($v UI32 1)))
                           ($set! r ($app ($dref fac) ($v UI64 12))))
-                    ($do ($app ($dref stdio:printf)
+                    ($do ($app ($dref $printf)
                                ($v (format "~a r = %llu\n" which))
                                r))))
            ($begin
