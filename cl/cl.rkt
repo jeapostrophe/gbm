@@ -1064,8 +1064,15 @@
             ($begin . answer)
             ($cond . more)))]))
 
-;; XXX guess type
-(define $v $val)
+(define $v
+  (case-lambda
+    [(v)
+     (match v
+       [(? string?)
+        ($val String v)]
+       [_
+        (error '$v "cannot infer type of ~e" v)])]
+    [(t v) ($val t v)]))
 
 ;; XXX exhaustive enum + datatypes
 ;; XXX testing & contracts
@@ -1105,7 +1112,7 @@
                             ($set! i ($+ i ($v UI32 1)))
                             ($set! r ($app ($dref fac) ($v UI64 12))))
                       ($do ($app ($dref stdio:printf)
-                                 ($v String (format "~a r = %llu\n" which))
+                                 ($v (format "~a r = %llu\n" which))
                                  r))))
              ($begin
               (test-fac "iter" fac)
