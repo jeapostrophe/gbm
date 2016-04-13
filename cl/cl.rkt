@@ -18,6 +18,7 @@
            racket/contract/base
            racket/match)
 
+  ;; XXX include stx information in structs implicitly to track them?
   (begin-for-syntax
     (define-syntax-class variant
       #:attributes (? def v)
