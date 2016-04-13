@@ -56,6 +56,7 @@
                               [(_ . x) (syntax/loc stx (a-v . x))]))
                           (make-rename-transformer #'cv))
                         (define (cv f ...)
+                          ;; xxx use syntax to get good blame
                           (a-v (contract ctc f 'pos 'neg) ...)))))))
 
   (define-syntax define-type
@@ -148,9 +149,13 @@
   (Union [tys (listof (cons/c Field? Type?))])
   (Fun [dom (listof (cons/c Var? Type?))] [rng Type?])
   ;; Extensions
-  (Extern [h CHeader?] [n CName?])
+  ;; xxx Any
+  ;; xxx Opaque
+  (Extern [h CHeader?] [n CName?]) ;; xxx change to another type
   (Delay [-ty (-> Type?)])
   (Seal [n Seal-Id?] [ty Type?]))
+
+(define Any 'xxx)
 
 (define (Union-ty ec u f)
   (match-define (Union tys) u)
@@ -315,10 +320,12 @@
   ($return))
 
 (define-type Decl
+  ;; xxx make extern variables distinct from functions? fold into
+  ;; other types with #f for no header?
   ($extern [h CHeader?] [n CName?])
   ($typedef [hn symbol?] [ty Type?])
   ($%proc [hn symbol?] [ty Fun?] [body Stmt?])
-  ($var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
+  ($%var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
 
 (define-type Unit
   ($cflags [flags (listof string?)] [u Unit?])
@@ -373,7 +380,7 @@
       n]
      [($typedef hn _) hn]
      [($%proc hn _ _) hn]
-     [($var hn _ _) hn]))
+     [($%var hn _ _) hn]))
   (define n (hash-ref! d->n d (λ () (gencsym hn))))
   (values (hash-has-key? n->d n)
           n))
@@ -695,7 +702,7 @@
                      (pp:stmt ec-p b)))
            pp:line
            pp:rbrace))))]
-   [($var hn t v)
+   [($%var hn t v)
     (pp:h-append
      maybe-static
      (pp:ty ec t #:name n)
@@ -918,7 +925,7 @@
        (define ec-p (ec-extend-ns* ec dom))
        (walk-stmt! ec-p b #:check rng #:ret? #t)
        t]
-      [($var hn t v)
+      [($%var hn t v)
        (hash-set! d->ty d t)
        (walk-ty! ec t)
        (walk-expr! ec v #:check t)])]))
@@ -1017,15 +1024,37 @@
              "-fmerge-all-constants" "-fno-ident" "-fPIE" "-fPIC")
            ($ldflags '("-dead_strip") u)))
 
+(define ($-> e f)
+  ($sref ($pref e) f))
+
 (define-simple-macro ($let1 ([ty n e]) . b)
   (let ([nn (gensym 'n)])
     ($%let1 ty nn
             (let ([n ($vref nn)])
               ($seq ($set! n e) ($begin . b))))))
-(define-simple-macro ($for ([ty n ie]) te ss . b)
-  ($let1 ([ty n ie])
-         ($%while te
-                 ($seq ($begin . b) ss))))
+
+(define-syntax ($let* stx)
+  (syntax-parse stx
+    [(_ () . b)
+     (syntax/loc stx
+       ($begin . b))]
+    [(_ ([ty n e] . more) . b)
+     (syntax/loc stx
+       ($let1 ([ty n e])
+              ($let* more . b)))]))
+
+(struct iter (init test step))
+(define-simple-macro ($for ([ty i iter-e]) . b)
+  (let ([iteri iter-e])
+    ($let1 ([ty i ((iter-init iteri) ty)])
+           ($%while ((iter-test iteri) ty i)
+                    ($seq ($begin . b) ((iter-step iteri) ty i))))))
+
+(define ($in-range e)
+  (iter (λ (ty) ($val ty 0))
+        (λ (ty i) ($< i e))
+        (λ (ty i) ($set! i ($+ i ($val ty 1))))))
+
 (define ($begin . ss)
   (match ss
     [(list)
@@ -1053,6 +1082,12 @@
                (let ([a ($vref 'aa)] ...)
                  ($begin . b))))]))
 
+(define-syntax ($var stx)
+  (syntax-parse stx
+    [(_ ty v)
+     (quasisyntax/loc stx
+       ($%var (or '#,(syntax-local-name) (gensym '$var)) ty v))]))
+
 (define-simple-macro ($app rator rand ...)
   ($%app rator (list rand ...)))
 
@@ -1074,6 +1109,8 @@
      (match v
        [(? string?)
         ($val String v)]
+       [(? boolean?)
+        ($val Bool v)]
        [_
         (error '$v "cannot infer type of ~e" v)])]
     [(t v) ($val t v)]))

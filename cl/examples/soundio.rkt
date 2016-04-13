@@ -6,7 +6,7 @@
 (define PI
   ($var F32 ($val F32 3.1415926535)))
 
-(define secounds_offset
+(define seconds-offset
   ($var F32 ($val F32 0.0)))
 
 (define write-callback
@@ -16,7 +16,7 @@
          [SI32 frame-count-max])
         Void)
    ($let*
-    ([SoundIoChannelLayout layout ($addr ($-> outs 'layout))]
+    ([(Ptr SoundIoChannelLayout) layout ($addr ($-> outs 'layout))]
      [F32 float-sample-rate ($-> outs 'sample_rate)]
      [F32 seconds-per-frame ($/ ($v F32 1.0) float-sample-rate)]
      [SoundIoChannelArea areas ($v SoundIoChannelArea $NULL)]
@@ -39,14 +39,14 @@
          ([F32 pitch ($v F32 440.0)]
           [F32 radians-per-second
                ($* pitch ($* ($v F32 2.0) PI))])
-         ($for ([frame ($in-range frame-count)])
+         ($for ([SI32 frame ($in-range frame-count)])
                ($let1
                 ([F32 sample
                       (sinf
                        ($* ($+ seconds-offset
                                ($* frame seconds-per-frame))
                            radians-per-second))])
-                ($for ([ch ($in-range ($-> layout 'channel_count))])
+                ($for ([SI32 ch ($in-range ($-> layout 'channel_count))])
                       ($set! ($pref
                               ($+ ($sref ($aref areas ch) 'ptr)
                                   ($* ($sref ($aref areas ch) 'step) frame)))
@@ -72,7 +72,7 @@
     ($do (soundio_flush_events sio))
     ($let1
      ([SI32 default-out (soundio_default_output_device_index sio)])
-     (check-pos default-out "no output device found")
+     (check-pos default-out "no output device found: %d\n")
      ($let1
       ([SoundIoDevice
         dev
