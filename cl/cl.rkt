@@ -3,160 +3,18 @@
          racket/contract/region
          (for-syntax racket/base
                      syntax/parse)
-         syntax/parse/define)
+         syntax/parse/define
+         "define-type.rkt"
+         "cl-types.rkt")
+(provide (all-from-out "cl-types.rkt"))
 
 ;; Libraries
 (require racket/pretty)
 (define-syntax-rule (xxx v ...)
   (error 'xxx "~a" (pretty-format (list (cons 'v v) ...))))
 
-(module define-type racket/base
-  (require (for-syntax racket/base
-                       syntax/parse
-                       racket/list
-                       racket/syntax)
-           racket/contract/base
-           racket/match)
-
-  ;; XXX include stx information in structs implicitly to track them?
-  (begin-for-syntax
-    (define-syntax-class variant
-      #:attributes (? def v)
-      (pattern v:id
-               #:with v? (format-id #'v "~a?" #'v)
-               #:with vv (generate-temporary #'v)
-               #:with a-v (generate-temporary #'v)
-               #:attr ? #'v?
-               #:attr def
-               (syntax/loc #'v
-                 (begin (struct a-v ()
-                          #:transparent
-                          #:reflection-name 'v)
-                        (define-match-expander v
-                          (λ (stx)
-                            (syntax-parse stx
-                              [(_) (syntax/loc stx (a-v))]))
-                          (make-rename-transformer #'vv))
-                        (define vv (a-v))
-                        (define (v? x) (eq? v x)))))
-      (pattern (v:id [f:id ctc:expr] ...)
-               #:with v? (format-id #'v "~a?" #'v)
-               #:with a-v (generate-temporary #'v)
-               #:with cv (generate-temporary #'v)
-               #:with a-v? (format-id #'a-v "~a?" #'a-v)
-               #:attr ? #'v?
-               #:attr def
-               (syntax/loc #'v
-                 (begin (struct a-v (f ...)
-                          #:transparent
-                          #:reflection-name 'v)
-                        (define v? a-v?)
-                        (define-match-expander v
-                          (λ (stx)
-                            (syntax-parse stx
-                              [(_ . x) (syntax/loc stx (a-v . x))]))
-                          (make-rename-transformer #'cv))
-                        (define (cv f ...)
-                          ;; xxx use syntax to get good blame
-                          (a-v (contract ctc f 'pos 'neg) ...)))))))
-
-  (define-syntax define-type
-    (λ (stx)
-      (syntax-parse stx
-        [(_ n:id v:variant ...)
-         (with-syntax ([n? (format-id #'n "~a?" #'n)])
-           (syntax/loc stx
-             (begin
-               (define (n? x)
-                 (or (v.? x) ...))
-               v.def ...
-               (define-syntax n
-                 (type-record (list #'v.v ...))))))])))
-
-  (begin-for-syntax
-    (struct type-record (vs))
-
-    (define-syntax-class clause
-      #:attributes (v)
-      (pattern [(v:id . more) . body])))
-
-  (define-syntax match-type
-    (λ (stx)
-      (syntax-parse stx
-        [(_ ty v:id c:clause ...)
-         #:declare ty (static type-record? "define-type type")
-         (define ty-vs (type-record-vs (attribute ty.value)))
-         (define the-vs (syntax->list #'(c.v ...)))
-         (define missing
-           (for/list ([req-v (in-list ty-vs)]
-                      #:unless (member req-v the-vs free-identifier=?))
-             req-v))
-         (unless (empty? missing)
-           (raise-syntax-error 'match-type
-                               (format "missing clauses for ~a variants: ~a"
-                                       (syntax-e #'ty)
-                                       (map syntax-e missing))
-                               stx))
-         (syntax/loc stx
-           (match v c ...))])))
-
-  (provide define-type
-           match-type))
-
-(require (submod "." define-type))
-
-;; Core Language
-(define unsigned? exact-nonnegative-integer?)
-(define signed? exact-integer?)
-(define float? real?)
-
-(define Field? symbol?)
-(define Seal-Id? symbol?)
-(define Var? symbol?)
-;; xxx should all string? be bytes?
-(define CName? string?)
-
-(define-type CPP
-  (CHeader [cflags (listof string?)]
-           [ldflags? (listof string?)]
-           [pre (listof string?)]
-           [litc string?]
-           [post (listof string?)]))
-
 (define <stdint.h>
   (CHeader '() '() '() "<stdint.h>" '()))
-
-(define (Lval? x)
-  (or ($aref? x)
-      ($pref? x)
-      ($vref? x)
-      ($dref? x)
-      ($sref? x)
-      ($uref? x)))
-
-;; XXX const
-
-(define-type Type
-  ;; From C
-  Size Char
-  UI8 UI16 UI32 UI64
-  SI8 SI16 SI32 SI64
-  F32 F64 F128
-  Void
-  ;; xxx intptr_t?
-  (Record [fields (listof (cons/c Field? Type?))])
-  (Ptr [ty Type?])
-  (Arr [ty Type?] [k unsigned?])
-  (Union [tys (listof (cons/c Field? Type?))])
-  (Fun [dom (listof (cons/c Var? Type?))] [rng Type?])
-  ;; Extensions
-  ;; xxx Any
-  ;; xxx Opaque
-  (Extern [h CHeader?] [n CName?]) ;; xxx change to another type
-  (Delay [-ty (-> Type?)])
-  (Seal [n Seal-Id?] [ty Type?]))
-
-(define Any 'xxx)
 
 (define (Union-ty ec u f)
   (match-define (Union tys) u)
@@ -169,21 +27,6 @@
     [(cons _ t) t]
     [#f (ec-fail! ec (format "~e not a field of record ~e" f r))]))
 
-(define String (Ptr Char))
-(define Bool (Seal 'Bool UI8))
-
-(define-simple-macro
-  (define-Op1 x [ov iv] ...)
-  (begin (define-type x iv ...)
-         (define-simple-macro (ov a)
-           ($op1 iv a))
-         ...))
-
-(define-Op1 Op1
-  [$! $%!]
-  [$neg $%neg]
-  [$bneg $%bneg])
-
 (define (ec-check-op1-ty! ec o at)
   (match-type
    Op1 o
@@ -193,26 +36,6 @@
     (ec-check-ty-in! ec at Numeric-Types)]
    [($%bneg)
     (ec-check-ty-in! ec at Integer-Types)]))
-
-(define-simple-macro
-  (define-Op2 x [ov iv] ...)
-  (begin (define-type x iv ...)
-         (define-simple-macro (ov a b)
-           ($op2 a iv b))
-         ...))
-
-(define-Op2 Op2
-  [$+ $%+] [$- $%-] [$* $%*] [$/ $%/] [$% $%%]
-  [$== $%==] [$!= $%!=] [$> $%>] [$< $%<] [$>= $%>=] [$<= $%<=]
-  [$and $%and] [$or $%or]
-  [$band $%band] [$bior $%bior] [$bxor $%bxor] [$bshl $%bshl] [$bshr $%bshr])
-
-(define Integer-Types
-  (list Size Char
-        UI8 UI16 UI32 UI64
-        SI8 SI16 SI32 SI64))
-(define Numeric-Types
-  (list* F32 F64 F128 Integer-Types))
 
 (define (ec-check-op2-ty! ec at o bt)
   (cond
@@ -241,24 +64,6 @@
         (xxx 'ec-check-op2-ty! ec at o bt)])]
     [else
      (xxx 'ec-check-op2-ty! ec at o bt)]))
-
-(define-type Literal
-  $NULL
-  $zero-init
-  ($struct [f->v (hash/c Field? Val?)])
-  ($union [f->v (hash/c Field? Val?)])
-  ($array [vs (vectorof Val?)]))
-
-(define Val?
-  (or/c boolean? unsigned? signed? float? char? string? Literal?))
-
-(define ((unsigned/bits? bits) x)
-  (and (exact-integer? x)
-       (not (negative? x))
-       (<= (integer-length x) bits)))
-(define ((signed/bits? bits) x)
-  (and (exact-integer? x)
-       (<= (integer-length x) (sub1 bits))))
 
 (define (val-? ec ct)
   (match ct
@@ -289,50 +94,6 @@
      (unless (? v)
        (ec-fail! ec (format "~e should match ~e" v ?)))
      ct]))
-
-(define-type Expr
-  ($sizeof [ty Type?])
-  ($offsetof [ty Record?] [f Field?])
-  ($op1 [op Op1?] [arg Expr?])
-  ($op2 [lhs Expr?] [op Op2?] [rhs Expr?])
-  ($val [t Type?] [v Val?])
-  ($%app [rator Expr?] [rands (listof Expr?)])
-  ($aref [lhs Expr?] [rhs Expr?])
-  ($addr [arg Expr?])
-  ($pref [arg Expr?])
-  ($vref [v Var?])
-  ($dref [d Decl?])
-  ($ddref [-d (-> Decl?)])
-  ($sref [obj Expr?] [f Field?])
-  ($uref [obj Expr?] [f Field?])
-  ($ife [test Expr?] [if1 Expr?] [if0 Expr?])
-  ($seal [s Seal-Id?] [e Expr?])
-  ($unseal [s Seal-Id?] [e Expr?]))
-
-(define-type Stmt
-  ($nop)
-  ($seq [fst Stmt?] [snd Stmt?])
-  ($do [e Expr?])
-  ($if [test Expr?] [if1 Stmt?] [if0 Stmt?])
-  ($%while [test Expr?] [body Stmt?])
-  ($%let1 [ty Type?] [v Var?] [body Stmt?])
-  ($set! [lhs Lval?] [rhs Expr?])
-  ($ret [val Expr?])
-  ($return))
-
-(define-type Decl
-  ;; xxx make extern variables distinct from functions? fold into
-  ;; other types with #f for no header?
-  ($extern [h CHeader?] [n CName?])
-  ($typedef [hn symbol?] [ty Type?])
-  ($%proc [hn symbol?] [ty Fun?] [body Stmt?])
-  ($%var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
-
-(define-type Unit
-  ($cflags [flags (listof string?)] [u Unit?])
-  ($ldflags [flags (listof string?)] [u Unit?])  
-  ($exe [main $%proc?])
-  ($lib [ds (hash/c CName? Decl?)]))
 
 ;; Compiler
 (require (prefix-in pp: pprint)

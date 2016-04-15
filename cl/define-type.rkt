@@ -1,0 +1,92 @@
+#lang racket/base
+(require (for-syntax racket/base
+                     syntax/parse
+                     racket/list
+                     racket/syntax)
+         racket/contract/base
+         racket/match)
+
+;; XXX include stx information in structs implicitly to track them?
+(begin-for-syntax
+  (define-syntax-class variant
+    #:attributes (? def v)
+    (pattern v:id
+             #:with v? (format-id #'v "~a?" #'v)
+             #:with vv (generate-temporary #'v)
+             #:with a-v (generate-temporary #'v)
+             #:attr ? #'v?
+             #:attr def
+             (syntax/loc #'v
+               (begin (struct a-v ()
+                        #:transparent
+                        #:reflection-name 'v)
+                      (define-match-expander v
+                        (λ (stx)
+                          (syntax-parse stx
+                            [(_) (syntax/loc stx (a-v))]))
+                        (make-rename-transformer #'vv))
+                      (define vv (a-v))
+                      (define (v? x) (eq? v x)))))
+    (pattern (v:id [f:id ctc:expr] ...)
+             #:with v? (format-id #'v "~a?" #'v)
+             #:with a-v (generate-temporary #'v)
+             #:with cv (generate-temporary #'v)
+             #:with a-v? (format-id #'a-v "~a?" #'a-v)
+             #:attr ? #'v?
+             #:attr def
+             (syntax/loc #'v
+               (begin (struct a-v (f ...)
+                        #:transparent
+                        #:reflection-name 'v)
+                      (define v? a-v?)
+                      (define-match-expander v
+                        (λ (stx)
+                          (syntax-parse stx
+                            [(_ . x) (syntax/loc stx (a-v . x))]))
+                        (make-rename-transformer #'cv))
+                      (define (cv f ...)
+                        ;; xxx use syntax to get good blame
+                        (a-v (contract ctc f 'pos 'neg) ...)))))))
+
+(define-syntax define-type
+  (λ (stx)
+    (syntax-parse stx
+      [(_ n:id v:variant ...)
+       (with-syntax ([n? (format-id #'n "~a?" #'n)])
+         (syntax/loc stx
+           (begin
+             (define (n? x)
+               (or (v.? x) ...))
+             v.def ...
+             (define-syntax n
+               (type-record (list #'v.v ...))))))])))
+
+(begin-for-syntax
+  (struct type-record (vs))
+
+  (define-syntax-class clause
+    #:attributes (v)
+    (pattern [(v:id . more) . body])))
+
+(define-syntax match-type
+  (λ (stx)
+    (syntax-parse stx
+      [(_ ty v:id c:clause ...)
+       #:declare ty (static type-record? "define-type type")
+       (define ty-vs (type-record-vs (attribute ty.value)))
+       (define the-vs (syntax->list #'(c.v ...)))
+       (define missing
+         (for/list ([req-v (in-list ty-vs)]
+                    #:unless (member req-v the-vs free-identifier=?))
+           req-v))
+       (unless (empty? missing)
+         (raise-syntax-error 'match-type
+                             (format "missing clauses for ~a variants: ~a"
+                                     (syntax-e #'ty)
+                                     (map syntax-e missing))
+                             stx))
+       (syntax/loc stx
+         (match v c ...))])))
+
+(provide define-type
+         match-type)
