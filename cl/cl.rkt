@@ -39,26 +39,28 @@
 
 (define (ec-check-op2-ty! ec at o bt)
   (cond
-    [(memq o (list $%+ $%- $%* $%/ $%% $%== $%!= $%> $%< $%>= $%<= $%and $%or))
+    [(member o (list ($%+) ($%-) ($%*) ($%/) ($%%)
+                     ($%==) ($%!=) ($%>) ($%<) ($%>=) ($%<=)
+                     ($%and) ($%or)))
      ;; These operations require equal types
      (ec-check-ty! ec at bt)
      (cond
        ;; These consumes and produce Bools
-       [(memq o (list $%and $%or))
+       [(member o (list ($%and) ($%or)))
         (ec-check-ty! ec bt Bool)]
        ;; These consume numbers and produce Bools
-       [(memq o (list $%> $%< $%>= $%<=))
+       [(member o (list ($%>) ($%<) ($%>=) ($%<=)))
         (ec-check-ty-in! ec bt Numeric-Types)
         Bool]
        ;; These consume numbers and pointers and produce Bools
-       [(memq o (list $%== $%!=))
+       [(member o (list ($%==) ($%!=)))
         (ec-check-ty-in-or-?! ec bt Numeric-Types Ptr?)
         Bool]
        ;; These consume integers and produce integers
-       [(memq o (list $%%))
+       [(member o (list ($%%)))
         (ec-check-ty-in! ec bt Integer-Types)]
        ;; These consume numbers and produce the kind of number that went in
-       [(memq o (list $%+ $%- $%* $%/))
+       [(member o (list ($%+) ($%-) ($%*) ($%/)))
         (ec-check-ty-in! ec bt Numeric-Types)]
        [else
         (xxx 'ec-check-op2-ty! ec at o bt)])]
@@ -67,7 +69,7 @@
 
 (define (val-? ec ct)
   (match ct
-    [(Size) (val-? UI64)]
+    [(Size) (val-? ec (UI64))]
     [(Char) char?]
     [(UI8) (unsigned/bits? 8)]
     [(UI16) (unsigned/bits? 16)]
@@ -79,7 +81,6 @@
     [(SI64) (signed/bits? 64)]
     [(F32) single-flonum?]
     [(F64) double-flonum?]
-    [(F128) double-flonum?]
     [(Ptr (Char)) string?]
     [(Seal 'Bool (UI8)) boolean?]
     [else
@@ -201,13 +202,21 @@
   (or (equal? x y)
       (ec-fail! ec (format "~e should match ~e" x y))))
 (define (ec-check-ty*! ec x y)
-  (define (eq!) (ec-check-eq?! ec x y))
   (match-type
    Type x
-   [(Size) (eq!)] [(Char) (eq!)] [(Void) (eq!)]
-   [(UI8) (eq!)] [(UI16) (eq!)] [(UI32) (eq!)] [(UI64) (eq!)]
-   [(SI8) (eq!)] [(SI16) (eq!)] [(SI32) (eq!)] [(SI64) (eq!)]
-   [(F32) (eq!)] [(F64) (eq!)] [(F128) (eq!)]
+   [(Size) (ec-check-ty?! ec y Size?)]
+   [(Char) (ec-check-ty?! ec y Char?)]
+   [(Void) (ec-check-ty?! ec y Void?)]
+   [(UI8) (ec-check-ty?! ec y UI8?)]
+   [(UI16) (ec-check-ty?! ec y UI16?)]
+   [(UI32) (ec-check-ty?! ec y UI32?)]
+   [(UI64) (ec-check-ty?! ec y UI64?)]
+   [(SI8) (ec-check-ty?! ec y SI8?)]
+   [(SI16) (ec-check-ty?! ec y SI16?)]
+   [(SI32) (ec-check-ty?! ec y SI32?)]
+   [(SI64) (ec-check-ty?! ec y SI64?)]
+   [(F32) (ec-check-ty?! ec y F32?)]
+   [(F64) (ec-check-ty?! ec y F64?)]
    [(Record x-fs) (xxx 'record-eq)]
    [(Ptr xt)
     (ec-check-ty?! ec y Ptr?)
@@ -312,7 +321,6 @@
    [(SI8) (pp:ty-name "int8_t")] [(SI16) (pp:ty-name "int16_t")]
    [(SI32) (pp:ty-name "int32_t")] [(SI64) (pp:ty-name "int64_t")]
    [(F32) (pp:ty-name "float")] [(F64) (pp:ty-name "double")]
-   [(F128) (pp:ty-name "long double")]
    [(Void) (pp:ty-name "void")]
    [(Record fs) (xxx 'record)]
    [(Ptr t)
@@ -335,19 +343,19 @@
     (pp:ty ec t #:name n #:ptrs p)]))
 
 (define pp:op1-table
-  (hasheq $%! "!"
-          $%neg "-"
-          $%bneg "~"))
+  (hasheq ($%!) "!"
+          ($%neg) "-"
+          ($%bneg) "~"))
 (define (pp:op1 o)
   (pp:text
    (hash-ref pp:op1-table o
              (λ () (error 'pp:op1 "Unknown op1: ~e" o)))))
 
 (define pp:op2-table
-  (hasheq $%+ "+" $%- "-" $%* "*" $%/ "/" $%% "%"
-          $%== "==" $%!= "!=" $%> ">" $%< "<" $%>= ">=" $%<= "<="
-          $%and "&&" $%or "||"
-          $%band "&" $%bior "|" $%bxor "^" $%bshl "<<" $%bshr ">>"))
+  (hasheq ($%+) "+" ($%-) "-" ($%*) "*" ($%/) "/" ($%%) "%"
+          ($%==) "==" ($%!=) "!=" ($%>) ">" ($%<) "<" ($%>=) ">=" ($%<=) "<="
+          ($%and) "&&" ($%or) "||"
+          ($%band) "&" ($%bior) "|" ($%bxor) "^" ($%bshl) "<<" ($%bshr) ">>"))
 (define (pp:op2 o)
   (pp:text
    (hash-ref pp:op2-table o
@@ -519,7 +527,7 @@
    [(Size) (void)] [(Char) (void)]
    [(UI8) (void)] [(UI16) (void)] [(UI32) (void)] [(UI64) (void)]
    [(SI8) (void)] [(SI16) (void)] [(SI32) (void)] [(SI64) (void)]
-   [(F32) (void)] [(F64) (void)] [(F128) (void)]
+   [(F32) (void)] [(F64) (void)]
    [(Void) (void)]
    [(Record fs)
     (for ([f*t (in-list fs)])
@@ -553,11 +561,11 @@
    Expr (force-Expr e)
    [($sizeof t)
     (walk-ty! ec t)
-    (ec-check-ty! ec Size ct)]
+    (ec-check-ty! ec (Size) ct)]
    [($offsetof t f)
     (walk-ty! ec t)
     (define ft (Record-field-ty ec t f))
-    (ec-check-ty! ec Size ct)]
+    (ec-check-ty! ec (Size) ct)]
    [($op1 o a)
     (define at (walk-expr! ec a))
     (define rt (ec-check-op1-ty! ec o at))
@@ -587,7 +595,7 @@
          (walk-expr! ec r #:check (cdr v*rt)))
        (ec-check-ty! ec rng ct)])]
    [($aref a b)
-    (walk-expr! ec b #:check Size)
+    (walk-expr! ec b #:check (Size))
     (define at (ec-force-ty ec (walk-expr! ec a)))
     (cond
       [(Any? at)
@@ -674,7 +682,7 @@
     (walk-stmt! ec a #:check rt #:ret? #f)
     (walk-stmt! ec b #:check rt #:ret? ret?)]
    [($do e)
-    (walk-expr! ec e #:check Void)
+    (walk-expr! ec e #:check (Void))
     (ec-check-ret! ec ret?)]
    [($if e s1 s2)
     (walk-expr! ec e #:check Bool)
@@ -694,7 +702,7 @@
     (walk-expr! ec v #:check rt)
     (void)]
    [($return)
-    (ec-check-ty! ec Void rt)
+    (ec-check-ty! ec (Void) rt)
     (void)]))
 
 (define/contract

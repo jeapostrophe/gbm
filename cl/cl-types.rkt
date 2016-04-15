@@ -35,11 +35,11 @@
 
 (define-type Type
   ;; From C
-  Size Char
-  UI8 UI16 UI32 UI64
-  SI8 SI16 SI32 SI64
-  F32 F64 F128
-  Void
+  (Size) (Char)
+  (UI8) (UI16) (UI32) (UI64)
+  (SI8) (SI16) (SI32) (SI64)
+  (F32) (F64)
+  (Void)
   ;; xxx intptr_t?
   (Record [fields (listof (cons/c Field? Type?))])
   (Ptr [ty Type?])
@@ -47,20 +47,20 @@
   (Union [tys (listof (cons/c Field? Type?))])
   (Fun [dom (listof (cons/c Var? Type?))] [rng Type?])
   ;; Extensions
-  Any
+  (Any)
   (Opaque [n CName?])
   (Extern [h CHeader?] [t Type?])
   (Delay [-ty (-> Type?)])
   (Seal [n Seal-Id?] [ty Type?]))
 
-(define String (Ptr Char))
-(define Bool (Seal 'Bool UI8))
+(define String (Ptr (Char)))
+(define Bool (Seal 'Bool (UI8)))
 
 (define-simple-macro
   (define-Op1 x [ov iv] ...)
-  (begin (define-type x iv ...)
+  (begin (define-type x (iv) ...)
          (define-simple-macro (ov a)
-           ($op1 iv a))
+           ($op1 (iv) a))
          ...))
 
 (define-Op1 Op1
@@ -71,12 +71,12 @@
 
 (define-simple-macro
   (define-Op2 x [ov iv] ...)
-  (begin (define-type x iv ...)
+  (begin (define-type x (iv) ...)
          (define-syntax (ov stx)
            (syntax-parse stx
              [(_ a b)
               (syntax/loc stx
-                ($op2 a iv b))]))
+                ($op2 a (iv) b))]))
          ...))
 
 (define-Op2 Op2
@@ -86,15 +86,15 @@
   [$band $%band] [$bior $%bior] [$bxor $%bxor] [$bshl $%bshl] [$bshr $%bshr])
 
 (define Integer-Types
-  (list Size Char
-        UI8 UI16 UI32 UI64
-        SI8 SI16 SI32 SI64))
+  (list (Size) (Char)
+        (UI8) (UI16) (UI32) (UI64)
+        (SI8) (SI16) (SI32) (SI64)))
 (define Numeric-Types
-  (list* F32 F64 F128 Integer-Types))
+  (list* (F32) (F64) Integer-Types))
 
 (define-type Literal
-  $NULL
-  $zero-init
+  ($NULL)
+  ($zero-init)
   ($struct [f->v (hash/c Field? Val?)])
   ($union [f->v (hash/c Field? Val?)])
   ($array [vs (vectorof Val?)]))

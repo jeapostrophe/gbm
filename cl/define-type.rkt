@@ -11,23 +11,6 @@
 (begin-for-syntax
   (define-syntax-class variant
     #:attributes (? def v)
-    (pattern v:id
-             #:with v? (format-id #'v "~a?" #'v)
-             #:with vv (generate-temporary #'v)
-             #:with a-v (generate-temporary #'v)
-             #:attr ? #'v?
-             #:attr def
-             (syntax/loc #'v
-               (begin (struct a-v ()
-                        #:transparent
-                        #:reflection-name 'v)
-                      (define-match-expander v
-                        (λ (stx)
-                          (syntax-parse stx
-                            [(_) (syntax/loc stx (a-v))]))
-                        (make-rename-transformer #'vv))
-                      (define vv (a-v))
-                      (define (v? x) (eq? v x)))))
     (pattern (v:id [f:id ctc:expr] ...
                    (~optional (~seq #:procedure proc:id)))
              #:with v? (format-id #'v "~a?" #'v)
