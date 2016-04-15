@@ -87,8 +87,20 @@
 
 (define (ec-check-val-ty! ec v ct)
   (cond
-    [(Literal? ct)
-     (xxx 'ec-check-val-ty! ec v ct)]
+    [(Literal? v)
+     (match-type
+      Literal v
+      [($NULL)
+       (ec-check-ty?! ec ct Ptr?)
+       ct]
+      [($zero-init)
+       (xxx 'ec-check-val-ty! '$zero-init ec v ct)]
+      [($struct _)
+       (xxx 'ec-check-val-ty! '$struct ec v ct)]
+      [($union _)
+       (xxx 'ec-check-val-ty! '$union ec v ct)]
+      [($array _)
+       (xxx 'ec-check-val-ty! '$array ec v ct)])]
     [else
      (define ? (val-? ec ct))
      (unless (? v)
@@ -341,9 +353,15 @@
    (hash-ref pp:op2-table o
              (λ () (error 'pp:op2 "Unknown op1: ~e" o)))))
 
+(define (force-Expr x)
+  (cond
+    [(Expr? x) x]
+    [(Decl? x) ($dref x)]
+    [(Val? x) ($v x)]))
+
 (define (pp:expr ec e)
   (match-type
-   Expr e
+   Expr (force-Expr e)
    [($sizeof t)
     (pp:h-append pp:lparen
                  (pp:text "sizeof") pp:lparen (pp:ty ec t) pp:rparen
@@ -528,11 +546,11 @@
 
 (define/contract
   (walk-expr! ec e #:check [ct #f])
-  (->* (emit-ctxt? Expr?)
+  (->* (emit-ctxt? Expr^?)
        (#:check (or/c #f Type?))
        Type?)
   (match-type
-   Expr e
+   Expr (force-Expr e)
    [($sizeof t)
     (walk-ty! ec t)
     (ec-check-ty! ec Size ct)]
@@ -831,14 +849,13 @@
         (λ (ty i) ($< i e))
         (λ (ty i) ($set! i ($+ i ($val ty 1))))))
 
-(define ($begin . ss)
-  (match ss
-    [(list)
-     ($nop)]
-    [(list s)
-     s]
-    [(cons s ss)
-     ($seq s (apply $begin ss))]))
+(define-syntax ($begin stx)
+  (syntax-parse stx
+    [(_) (syntax/loc stx ($nop))]
+    [(_ s) #'s]
+    [(_ s . ss)
+     (quasisyntax/loc #'s
+       ($seq s ($begin . ss)))]))
 
 (define-simple-macro ($while e . b)
   ($%while e ($begin . b)))
@@ -864,8 +881,11 @@
      (quasisyntax/loc stx
        ($%var (or '#,(syntax-local-name) (gensym '$var)) ty v))]))
 
-(define-simple-macro ($app rator rand ...)
-  ($%app rator (list rand ...)))
+(define-syntax ($app stx)
+  (syntax-parse stx
+    [(_ rator rand ...)
+     (syntax/loc stx
+       ($%app rator (list rand ...)))]))
 
 (define-syntax ($cond stx)
   (syntax-parse stx

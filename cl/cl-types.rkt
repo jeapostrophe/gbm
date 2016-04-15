@@ -27,7 +27,9 @@
       ($vref? x)
       ($dref? x)
       ($sref? x)
-      ($uref? x)))
+      ($uref? x)
+      ($%var? x)
+      ($extern? x)))
 
 ;; XXX const
 
@@ -111,38 +113,45 @@
 (define-type Expr
   ($sizeof [ty Type?])
   ($offsetof [ty Record?] [f Field?])
-  ($op1 [op Op1?] [arg Expr?])
-  ($op2 [lhs Expr?] [op Op2?] [rhs Expr?])
+  ($op1 [op Op1?] [arg Expr^?])
+  ($op2 [lhs Expr^?] [op Op2?] [rhs Expr^?])
   ($val [t Type?] [v Val?])
-  ($%app [rator Expr?] [rands (listof Expr?)])
-  ($aref [lhs Expr?] [rhs Expr?])
-  ($addr [arg Expr?])
-  ($pref [arg Expr?])
+  ($%app [rator Expr^?] [rands (listof Expr^?)])
+  ($aref [lhs Expr^?] [rhs Expr^?])
+  ($addr [arg Expr^?])
+  ($pref [arg Expr^?])
   ($vref [v Var?])
   ($dref [d Decl?])
   ($ddref [-d (-> Decl?)])
-  ($sref [obj Expr?] [f Field?])
-  ($uref [obj Expr?] [f Field?])
-  ($ife [test Expr?] [if1 Expr?] [if0 Expr?])
-  ($seal [s Seal-Id?] [e Expr?])
-  ($unseal [s Seal-Id?] [e Expr?]))
+  ($sref [obj Expr^?] [f Field?])
+  ($uref [obj Expr^?] [f Field?])
+  ($ife [test Expr^?] [if1 Expr^?] [if0 Expr^?])
+  ($seal [s Seal-Id?] [e Expr^?])
+  ($unseal [s Seal-Id?] [e Expr^?]))
 
 (define-type Stmt
   ($nop)
   ($seq [fst Stmt?] [snd Stmt?])
-  ($do [e Expr?])
-  ($if [test Expr?] [if1 Stmt?] [if0 Stmt?])
-  ($%while [test Expr?] [body Stmt?])
+  ($do [e Expr^?])
+  ($if [test Expr^?] [if1 Stmt?] [if0 Stmt?])
+  ($%while [test Expr^?] [body Stmt?])
   ($%let1 [ty Type?] [v Var?] [body Stmt?])
-  ($set! [lhs Lval?] [rhs Expr?])
-  ($ret [val Expr?])
+  ($set! [lhs Lval?] [rhs Expr^?])
+  ($ret [val Expr^?])
   ($return))
 
 (define-type Decl
-  ($extern [h CHeader?] [n CName?] [ty Type?])
+  ($extern [h CHeader?] [n CName?] [ty Type?]
+           #:procedure $%app)
   ($typedef [hn symbol?] [ty Type?])
-  ($%proc [hn symbol?] [ty Fun?] [body Stmt?])
-  ($%var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))
+  ($%proc [hn symbol?] [ty Fun?] [body Stmt?]
+          #:procedure $%app)
+  ($%var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr^?]))
+
+(define (Expr^? x)
+  (or (Expr? x)
+      (Decl? x)
+      (Val? x)))
 
 (define-type Unit
   ($cflags [flags (listof string?)] [u Unit?])

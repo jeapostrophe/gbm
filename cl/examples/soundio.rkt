@@ -11,7 +11,7 @@
 
 (define write-callback
   ($proc
-   (Fun ([SoundIoOutStream outs]
+   (Fun ([(Ptr SoundIoOutStream) outs]
          [SI32 frame-count-min]
          [SI32 frame-count-max])
         Void)
@@ -19,7 +19,7 @@
     ([(Ptr SoundIoChannelLayout) layout ($addr ($-> outs 'layout))]
      [F32 float-sample-rate ($-> outs 'sample_rate)]
      [F32 seconds-per-frame ($/ ($v F32 1.0) float-sample-rate)]
-     [SoundIoChannelArea areas ($v SoundIoChannelArea $NULL)]
+     [(Ptr SoundIoChannelArea) areas ($v SoundIoChannelArea $NULL)]
      [SI32 frames-left frame-count-max]
      [Bool stop? ($v #f)])
     ($while
@@ -65,21 +65,21 @@
   ($proc
    (Fun () SI32)
    ($let1
-    ([SoundIo sio (soundio_create)])
+    ([(Ptr SoundIo) sio (soundio_create)])
     (check-null sio)
     (check-sio-zero (soundio_connect sio)
                     "error connecting")
     ($do (soundio_flush_events sio))
     ($let1
      ([SI32 default-out (soundio_default_output_device_index sio)])
-     (check-pos default-out "no output device found: %d\n")
+     (check-pos default-out #:m (λ (err) (list "no output device found: %d\n" err)))
      ($let1
-      ([SoundIoDevice
+      ([(Ptr SoundIoDevice)
         dev
         (soundio_get_output_device sio default-out)])
       (check-null dev)
       ($let1
-       ([SoundIoOutStream
+       ([(Ptr SoundIoOutStream)
          outs
          (soundio_outstream_create dev)])
        ($set! ($-> outs 'format)
