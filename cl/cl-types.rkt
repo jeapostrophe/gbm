@@ -12,7 +12,6 @@
 (define Field? symbol?)
 (define Seal-Id? symbol?)
 (define Var? symbol?)
-;; xxx should all string? be bytes?
 (define CName? string?)
 
 (define-type CPP
