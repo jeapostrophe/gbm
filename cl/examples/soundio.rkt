@@ -23,7 +23,7 @@
      [SI32 frames-left frame-count-max]
      [Bool stop? ($v #f)])
     ($while
-     ($or stop? ($> frames-left 0))
+     ($or stop? ($> frames-left ($val SI32 0)))
      ($let1
       ([SI32 frame-count frames-left])
       (check-sio-zero

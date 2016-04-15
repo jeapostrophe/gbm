@@ -1,5 +1,7 @@
 #lang racket/base
 (require racket/contract/base
+         (for-syntax racket/base
+                     syntax/parse)
          syntax/parse/define
          "define-type.rkt")
 
@@ -71,8 +73,11 @@
 (define-simple-macro
   (define-Op2 x [ov iv] ...)
   (begin (define-type x iv ...)
-         (define-simple-macro (ov a b)
-           ($op2 a iv b))
+         (define-syntax (ov stx)
+           (syntax-parse stx
+             [(_ a b)
+              (syntax/loc stx
+                ($op2 a iv b))]))
          ...))
 
 (define-Op2 Op2

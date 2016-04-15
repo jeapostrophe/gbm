@@ -4,7 +4,8 @@
                      racket/list
                      racket/syntax)
          racket/contract/base
-         racket/match)
+         racket/match
+         syntax/quote)
 
 ;; XXX include stx information in structs implicitly to track them?
 (begin-for-syntax
@@ -44,9 +45,15 @@
                           (syntax-parse stx
                             [(_ . x) (syntax/loc stx (a-v . x))]))
                         (make-rename-transformer #'cv))
-                      (define (cv f ...)
-                        ;; xxx use syntax to get good blame
-                        (a-v (contract ctc f 'pos 'neg) ...)))))))
+                      (define-syntax (cv stx)
+                        (syntax-parse stx
+                          [(_ f ...)
+                           (with-syntax
+                             ([pos (syntax-source stx)]
+                              [neg (syntax-source #'v)])
+                             (quasisyntax/loc stx
+                               (let ([srcloc (quote-syntax/keep-srcloc #,stx)])
+                                 (a-v (contract ctc f 'pos 'neg 'f srcloc) ...))))])))))))
 
 (define-syntax define-type
   (λ (stx)
