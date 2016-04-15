@@ -80,7 +80,7 @@
     [(F32) single-flonum?]
     [(F64) double-flonum?]
     [(F128) double-flonum?]
-    [(Ptr (Char)) bytes?]
+    [(Ptr (Char)) string?]
     [(Seal 'Bool (UI8)) boolean?]
     [else
      (ec-fail! ec (format "invalid type for value: ~e" ct))]))
@@ -192,8 +192,7 @@
       #f
       (error 'emit msg)))
 (define (ec-check-ty?! ec t ?)
-  (define (?^ x) (or (Any? x) (? x)))
-  (or (?^ (ec-force-ty ec t))
+  (or (? t)
       (ec-fail! ec (format "~e should match ~e" t ?))))
 (define (ec-check-eq?! ec x y)
   (or (eq? x y)
@@ -249,6 +248,7 @@
          (ec-check-ty*! ec x y)
          (ec-check-ty! ec xf yf))]))
 (define (ec-check-ty-in! ec t ts)
+  (printf "ec-check-ty-in! ~v\n" (vector ec t ts))
   (define ec-p (ec-fail-ok ec))
   (or
    (for/or ([tp (in-list ts)])
@@ -572,39 +572,44 @@
     (ec-check-val-ty! ec v (or t ct))
     (ec-check-ty! ec t ct)]
    [($%app r rs)
-    (define rt (walk-expr! ec r))
-    (ec-check-ty?! ec rt Fun?)
-    (match rt
-      [(Fun dom rng)
+    (define rt (ec-force-ty ec (walk-expr! ec r)))
+    (cond
+      [(Any? rt)
+       (ec-unsound! ec)
+       (for ([r (in-list rs)])
+         (walk-expr! ec r))
+       ct]
+      [else
+       (ec-check-ty?! ec rt Fun?)
+       (match-define (Fun dom rng) rt)
        (for ([r (in-list rs)]
              [v*rt (in-list dom)])
          (walk-expr! ec r #:check (cdr v*rt)))
-       (ec-check-ty! ec rng ct)]
-      [(? Any?)
-       (ec-unsound! ec)
-       ct])]
+       (ec-check-ty! ec rng ct)])]
    [($aref a b)
-    (define at (walk-expr! ec a))
-    (ec-check-ty?! ec at Arr?)
-    (match at
-      [(Arr et _)
-       (walk-expr! ec b #:check Size)
-       (ec-check-ty! ec et ct)]
-      [(? Any?)
+    (walk-expr! ec b #:check Size)
+    (define at (ec-force-ty ec (walk-expr! ec a)))
+    (cond
+      [(Any? at)
        (ec-unsound! ec)
-       ct])]
+       ct]
+      [else
+       (ec-check-ty?! ec at Arr?)
+       (match-define (Arr et _) at)
+       (ec-check-ty! ec et ct)])]
    [($addr a)
     (define at (walk-expr! ec a))
     (ec-check-ty! ec (Ptr at) ct)]
    [($pref a)
-    (define at (walk-expr! ec a))
-    (ec-check-ty?! ec at Ptr?)
-    (match at
-      [(Ptr et)
-       (ec-check-ty! ec et ct)]
-      [(? Any?)
+    (define at (ec-force-ty ec (walk-expr! ec a)))
+    (cond
+      [(Any? at)
        (ec-unsound! ec)
-       ct])]
+       ct]
+      [else
+       (ec-check-ty?! ec at Ptr?)
+       (match-define (Ptr et) at)
+       (ec-check-ty! ec et ct)])]
    [($vref v)
     (ec-check-ty! ec (ec-var-ty ec v) ct)]
    [($dref d)
@@ -613,25 +618,24 @@
    [($ddref -d)
     (walk-expr! ec ($dref (-d)) #:check ct)]
    [($sref a f)
-    (define at (walk-expr! ec a))
-    (ec-check-ty?! ec at Record?)
-    (match at
-      [(? Record?)
+    (define at (ec-force-ty ec (walk-expr! ec a)))
+    (cond
+      [(Any? at)
+       (ec-unsound! ec)
+       ct]
+      [else
+       (ec-check-ty?! ec at Record?)
        (define ft (Record-field-ty ec at f))
-       (ec-check-ty! ec ft ct)]
-      [(? Any?)
-       (ec-unsound! ec)
-       ct])]
+       (ec-check-ty! ec ft ct)])]
    [($uref a f)
-    (define at (walk-expr! ec a))
-    (ec-check-ty?! ec at Union?)
-    (match at
-      [(? Union?)
-       (define ft (Union-ty ec at f))
-       (ec-check-ty! ec ft ct)]
-      [(? Any?)
+    (define at (ec-force-ty ec (walk-expr! ec a)))
+    (cond
+      [(Any? at)
        (ec-unsound! ec)
-       ct])]
+       ct]
+      [else
+       (define ft (Union-ty ec at f))
+       (ec-check-ty! ec ft ct)])]
    [($ife a b c)
     (walk-expr! ec a #:check Bool)
     (walk-expr! ec b #:check ct)
@@ -640,15 +644,15 @@
     (define et (walk-expr! ec e))
     (ec-check-ty! ec (Seal s et) ct)]
    [($unseal s e)
-    (define dt (walk-expr! ec e))
-    (ec-check-ty?! ec dt Seal?)
-    (match dt
-      [(Seal n et)
-       (ec-check-eq?! ec n s)
-       (ec-check-ty! ec et ct)]
-      [(? Any?)
+    (define dt (ec-force-ty ec (walk-expr! ec e)))
+    (cond
+      [(Any? dt)
        (ec-unsound! ec)
-       ct])]))
+       ct]
+      [else
+       (match-define (Seal n et) dt)
+       (ec-check-eq?! ec n s)
+       (ec-check-ty! ec et ct)])]))
 
 (define (ec-check-ret! ec ret?)
   (or (not ret?)
