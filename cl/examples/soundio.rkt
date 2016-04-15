@@ -42,7 +42,7 @@
          ($for ([SI32 frame ($in-range frame-count)])
                ($let1
                 ([F32 sample
-                      (sinf
+                      ($sinf
                        ($* ($+ seconds-offset
                                ($* frame seconds-per-frame))
                            radians-per-second))])

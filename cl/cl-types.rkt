@@ -45,13 +45,11 @@
   (Union [tys (listof (cons/c Field? Type?))])
   (Fun [dom (listof (cons/c Var? Type?))] [rng Type?])
   ;; Extensions
-  ;; xxx Any
-  ;; xxx Opaque
-  (Extern [h CHeader?] [n CName?]) ;; xxx change to another type
+  Any
+  (Opaque [n CName?])
+  (Extern [h CHeader?] [t Type?])
   (Delay [-ty (-> Type?)])
   (Seal [n Seal-Id?] [ty Type?]))
-
-(define Any 'xxx)
 
 (define String (Ptr Char))
 (define Bool (Seal 'Bool UI8))
@@ -141,9 +139,7 @@
   ($return))
 
 (define-type Decl
-  ;; xxx make extern variables distinct from functions? fold into
-  ;; other types with #f for no header?
-  ($extern [h CHeader?] [n CName?])
+  ($extern [h CHeader?] [n CName?] [ty Type?])
   ($typedef [hn symbol?] [ty Type?])
   ($%proc [hn symbol?] [ty Fun?] [body Stmt?])
   ($%var [hn symbol?] [ty (and/c Type? (not/c Fun?))] [val Expr?]))

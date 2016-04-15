@@ -136,7 +136,7 @@
   (define hn
     (match-type
      Decl d
-     [($extern _ n)
+     [($extern _ n _)
       (hash-set! n->d n d)
       (hash-set! d->n d n)
       n]
@@ -180,11 +180,14 @@
       #f
       (error 'emit msg)))
 (define (ec-check-ty?! ec t ?)
-  (define (?^ x) (or (Extern? x) (? x)))
+  (define (?^ x) (or (Any? x) (? x)))
   (or (?^ (ec-force-ty ec t))
       (ec-fail! ec (format "~e should match ~e" t ?))))
 (define (ec-check-eq?! ec x y)
   (or (eq? x y)
+      (ec-fail! ec (format "~e should match ~e" x y))))
+(define (ec-check-equal?! ec x y)
+  (or (equal? x y)
       (ec-fail! ec (format "~e should match ~e" x y))))
 (define (ec-check-ty*! ec x y)
   (define (eq!) (ec-check-eq?! ec x y))
@@ -197,37 +200,42 @@
    [(Record x-fs) (xxx 'record-eq)]
    [(Ptr xt)
     (ec-check-ty?! ec y Ptr?)
-    (match y
-      [(Ptr yt) (ec-check-ty! ec xt yt)]
-      [(? Extern?)
-       (ec-unsound! ec)
-       x])]
+    (match-define (Ptr yt) y)
+    (ec-check-ty! ec xt yt)]
    [(Arr xt xk) (xxx 'arr-eq)]
    [(Union x-us) (xxx 'union-eq)]
    [(Fun x-dom x-rng) (xxx 'fun-eq)]
-   [(Extern xh xn)
-    (ec-unsound! ec)
+   [(Any) (error 'emit "Impossible, Any was checked")]
+   [(Opaque xn)
+    (ec-check-ty?! ec y Opaque?)
+    (match-define (Opaque yn) y)
+    (ec-check-equal?! ec xn yn)
     y]
+   [(Extern xh xt)
+    (ec-check-ty! ec xt y)]
    [(Delay _) (error 'emit "Impossible, previously forced")]
    [(Seal xn xt)
     (ec-check-ty?! ec y Seal?)
-    (match y
-      [(Seal yn yt)
-       (ec-check-eq?! ec xn yn)
-       (ec-check-ty! ec xt yt)]
-      [(? Extern?)
-       (ec-unsound! ec)
-       x])]))
+    (match-define (Seal yn yt) y)
+    (ec-check-eq?! ec xn yn)
+    (ec-check-ty! ec xt yt)]))
 (define (ec-check-ty! ec x y)
   (cond
-    [y
-     (cond
-       [(eq? x y)
-        y]
-       [else
-        (ec-check-ty*! ec (ec-force-ty ec x) (ec-force-ty ec y))])]
+    [(eq? x y) y]
+    [(not x) y]
+    [(not y) x]
+    [(Any? x)
+     (ec-unsound! ec)
+     y]
+    [(Any? y)
+     (ec-unsound! ec)
+     x]
     [else
-     x]))
+     (define xf (ec-force-ty ec x))
+     (define yf (ec-force-ty ec y))
+     (if (and (eq? x xf) (eq? y yf))
+         (ec-check-ty*! ec x y)
+         (ec-check-ty! ec xf yf))]))
 (define (ec-check-ty-in! ec t ts)
   (define ec-p (ec-fail-ok ec))
   (or
@@ -303,8 +311,12 @@
     (xxx 'union)]
    [(Fun dom rng)
     (xxx 'fun)]
-   [(Extern h ln)
-    (pp:ty-name ln)]
+   [(Any)
+    (error 'emit "Cannot print Any type")]
+   [(Opaque tn)
+    (pp:ty-name tn)]
+   [(Extern h t)
+    (pp:ty ec t)]
    [(Delay -t)
     (pp:ty ec (-t) #:name n #:ptrs p)]
    [(Seal n t)
@@ -432,7 +444,7 @@
     (if global? pp:empty (pp:h-append (pp:text "static") pp:space)))
   (match-type
    Decl d
-   [($extern _ _) pp:empty]
+   [($extern _ _ _) pp:empty]
    [($typedef hn t)
     (if proto-only?
         (pp:h-append (pp:text "typedef") pp:space (pp:ty ec t #:name n) pp:semi)
@@ -504,8 +516,11 @@
     (for ([v*t (in-list dom)])
       (walk-ty! ec (cdr v*t)))
     (walk-ty! ec rng)]
-   [(Extern h n)
-    (walk-h! ec h)]
+   [(Any) (void)]
+   [(Opaque n) (void)]
+   [(Extern h t)
+    (walk-h! ec h)
+    (walk-ty! ec t)]
    [(Delay -t)
     (xxx 'delay)]
    [(Seal n t)
@@ -547,7 +562,7 @@
              [v*rt (in-list dom)])
          (walk-expr! ec r #:check (cdr v*rt)))
        (ec-check-ty! ec rng ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]
    [($aref a b)
@@ -557,7 +572,7 @@
       [(Arr et _)
        (walk-expr! ec b #:check Size)
        (ec-check-ty! ec et ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]
    [($addr a)
@@ -569,7 +584,7 @@
     (match at
       [(Ptr et)
        (ec-check-ty! ec et ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]
    [($vref v)
@@ -586,7 +601,7 @@
       [(? Record?)
        (define ft (Record-field-ty ec at f))
        (ec-check-ty! ec ft ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]
    [($uref a f)
@@ -596,7 +611,7 @@
       [(? Union?)
        (define ft (Union-ty ec at f))
        (ec-check-ty! ec ft ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]
    [($ife a b c)
@@ -613,7 +628,7 @@
       [(Seal n et)
        (ec-check-eq?! ec n s)
        (ec-check-ty! ec et ct)]
-      [(? Extern?)
+      [(? Any?)
        (ec-unsound! ec)
        ct])]))
 
@@ -672,8 +687,7 @@
      (ec-add-decl! ec d)
      (match-type
       Decl d
-      [($extern h n)
-       (define t (Extern h n))
+      [($extern h n t)
        (hash-set! d->ty d t)
        (walk-h! ec h)
        t]

@@ -2,17 +2,15 @@
 (require "../cl.rkt")
 
 (define <stdio.h> (CHeader '() '() '() "<stdio.h>" '()))
-;; XXX need to have typed versions
-(define $stderr ($extern <stdio.h> "stderr"))
-(define $printf ($extern <stdio.h> "printf"))
-(define $fprintf ($extern <stdio.h> "fprintf"))
+(define $stderr ($extern <stdio.h> "stderr" Any))
+(define $printf ($extern <stdio.h> "printf" Any))
+(define $fprintf ($extern <stdio.h> "fprintf" Any))
 
 (define <stdlib.h> (CHeader '() '() '() "<stdlib.h>" '()))
-(define $exit ($extern <stdlib.h> "exit"))
+(define $exit ($extern <stdlib.h> "exit" (Fun (list (cons 'status SI32)) Void)))
 
 (define <math.h> (CHeader '() '("-lm") '() "<math.h>" '()))
-;; XXX add $?
-(define sinf ($extern <math.h> "sinf"))
+(define $sinf ($extern <math.h> "sinf" (Fun (list (arg 'x F32)) F32)))
 
 (define (check-zero e #:m [mf (λ (err) (list "non-zero return code: %d\n" err))])
   ;; XXX i wish i could inspect the type of e
