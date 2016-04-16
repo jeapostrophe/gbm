@@ -68,7 +68,6 @@
   [$neg $%neg]
   [$bneg $%bneg])
 
-
 (define-simple-macro
   (define-Op2 x [ov iv] ...)
   (begin (define-type x (iv) ...)
