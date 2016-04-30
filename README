@@ -69,3 +69,5 @@ https://github.com/mntmn/interim/blob/master/sledge/jit_x64.c
   that run on the actual "hardware" for consistency, but it needs to
   be much more powerful because of things like screen real-estate for
   programming, access to files, compilation, and stuff like that.
+
+- Look at GLium: https://github.com/tomaka/glium
