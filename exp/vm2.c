@@ -65,6 +65,16 @@ typedef struct {
 
 // Video code
 
+/* XXX An alternative idea is to render in software and then upload a
+   texture to the GPU that is encoded using the hardware palette. If
+   the VPU resolution is 256x256 then we have 64k * palette-depth
+   memory per frame. The only thing that I find hard to do in software
+   is rotation. (Even Mode-7 is pretty easy, although it requires
+   actually keeping track of the layers and then composing them
+   afterwards.) The advantage of this would be decreased memory
+   bandwidth and potentially make it easier to express nested sprites,
+   which could be nice, but would definitely be less performant. */
+
 /* The SNES has 4 layers, but this number is chosen to make all of the
    layer data on one 4k page. This number has to be smaller than the
    OpenGL texture count limit (given the default implementation

@@ -71,3 +71,9 @@ https://github.com/mntmn/interim/blob/master/sledge/jit_x64.c
   programming, access to files, compilation, and stuff like that.
 
 - Look at GLium: https://github.com/tomaka/glium
+
+- Think about hierarchal state machines as a way to organize game code
+  https://en.wikipedia.org/wiki/UML_state_machine#Hierarchically_nested_states
+
+- Synchronous programming
+  https://en.wikipedia.org/wiki/Esterel
