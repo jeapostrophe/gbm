@@ -1,0 +1,60 @@
+name:                gbm
+version:             0.1.0
+github:              "jeapostrophe/gbm"
+license:             Apache-2.0
+author:              "Jay McCarthy"
+maintainer:          "jay.mccarthy@gmail.com"
+copyright:           "2020 Jay McCarthy"
+description:         Get Bonus Machine
+
+dependencies:
+- base >= 4.7 && < 5
+- containers
+- bytestring
+
+default-extensions:
+- BangPatterns
+- DeriveAnyClass
+- DeriveDataTypeable
+- DeriveGeneric
+- EmptyDataDeriving
+- FlexibleContexts
+- FlexibleInstances
+- LambdaCase
+- MultiParamTypeClasses
+- MultiWayIf
+- NamedFieldPuns
+- OverloadedStrings
+- RankNTypes
+- RecordWildCards
+- ScopedTypeVariables
+- StrictData
+- TemplateHaskell
+- TypeApplications
+- TypeSynonymInstances
+
+ghc-options:
+- -Wall
+- -Werror
+- -Wcompat
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wredundant-constraints
+- -O2
+- -fwrite-ide-info
+- -hiedir=.hie
+
+library:
+  source-dirs: src
+
+executables:
+  gbmc:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -O3
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - gbm
