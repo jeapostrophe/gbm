@@ -45,11 +45,13 @@ data HValue
   | HBS SrcLoc B.ByteString
   | HVUnion SrcLoc Field HValue
   | HVStruct SrcLoc [(Field, HValue)]
+  | HVArray SrcLoc [HValue]
 
 data HFormat
   = HVal SrcLoc RType
   | HUnion SrcLoc (M.Map Field HFormat)
   | HStruct SrcLoc [(Field, HFormat)]
+  | HArray SrcLoc HFormat Word16
 
 data Heap
   = Heap HFormat HValue
@@ -57,23 +59,6 @@ data Heap
 --- The run-time language
 {- A run-time program is a read-only heap and a set of functions that
  receive a read/write heap and an argument heap -}
-
-data HPathComponent
-  = HField SrcLoc Field
-  | HVariant SrcLoc Field
-  | HElem SrcLoc RArg
-
-data HRoot
-  = ROM
-  | RAM
-  | ARG
-  | HObj RArg
-
-data HPath
-  = HPath HRoot [HPathComponent]
-
-data RArg
-  = RRef SrcLoc Var
 
 data RPrim
   = NEG
@@ -106,20 +91,44 @@ data RPrim
   | FROU
   | FTRU
 
+data HPathComponent
+  = HVariant SrcLoc Field
+  | HField SrcLoc Field
+  | HElem SrcLoc RArg
+
+data HRoot
+  = ROM
+  | RAM
+  | ARG
+  | HObj RArg
+
+data HPath
+  = HPath HRoot [HPathComponent]
+
+data RArg
+  = RRef SrcLoc Var
+  | RVal SrcLoc HValue
+  | RHeap SrcLoc HPath
+
 data RExpr
   = RPrimApp SrcLoc RPrim [RArg]
-  | RHeapRef SrcLoc HPath
   | RCast SrcLoc RArg RType
+  | REArg SrcLoc RArg
+
+data RSetLHS
+  = RSHeap SrcLoc HPath
+  | RSVar SrcLoc Var
 
 data RStmt
-  = RSet SrcLoc HPath RArg
-  | RLet SrcLoc Var HFormat RExpr RStmt
+  = RSet SrcLoc RSetLHS RArg
+  | RLet SrcLoc Bool Var HFormat RExpr RStmt
   | RSeqn SrcLoc RStmt RStmt
   | RIf SrcLoc RArg RStmt RStmt
   | RWhile SrcLoc RArg RStmt
   | RPrompt SrcLoc Var RStmt
   | REscape SrcLoc Var
   | RTrace SrcLoc [RArg]
+  | RVoid SrcLoc
 
 data RFun
   = RFun SrcLoc HFormat RStmt
@@ -130,10 +139,10 @@ data RProg
 ---
 
 cBraces :: Doc a -> Doc a
-cBraces body = braces (nest 2 $ hardline <> body <> space)
+cBraces body = lbrace <> (nest 2 $ hardline <> body) <> hardline <> rbrace
 
 cIf :: Doc a -> Doc a -> Doc a -> Doc a
-cIf c t f = "if" <+> parens c <+> cBraces t <> hardline <> "else" <+> cBraces f
+cIf c t f = "if" <+> parens c <+> cBraces t <+> "else" <+> cBraces f
 
 cWhile :: Doc a -> Doc a -> Doc a
 cWhile c b = "while" <+> parens c <+> cBraces b
@@ -172,37 +181,41 @@ instance AsC HValue where
     HBS _ b -> dquotes $ pretty $ B.unpack b
     HVUnion _ f hv -> cFieldVals $ [(f, hv)]
     HVStruct _ fs -> cFieldVals fs
+    HVArray _ vs -> braces $ hsep $ punctuate comma $ map as_c vs
     where cFieldVals = cBraces . vsep . map cFieldVal
-          cFieldVal (f, hv) = "." <> pretty f <+> "=" <+> as_c hv
-          num t n = parens ( parens (as_c t) <+> pretty n )
+          cFieldVal (f, hv) = "." <> pretty f <+> "=" <+> as_c hv <> comma
+          num t n = parens (as_c t) <+> pretty n
 
 instance AsC HFormat where
   as_c = \case
     HVal _ t -> as_c t
     HUnion _ m -> "union" <+> cBraces (cFields $ M.toList m)
     HStruct _ fs -> "struct" <+> cBraces (cFields fs)
+    HArray _ t sz -> as_c t <> brackets (pretty sz)
     where cField (f, t) = as_c t <+> pretty f <> semi
           cFields = vsep . map cField
 
 instance AsC HPathComponent where
   as_c = \case
-    HField _ f -> "." <> pretty f
     HVariant _ f -> "." <> pretty f
+    HField _ f -> "." <> pretty f
     HElem _ a -> brackets $ as_c a
 
 instance AsC HRoot where
   as_c = \case
     ROM -> "rom"
     RAM -> "ram"
-    ARG -> "arg"
+    ARG -> "*arg"
     HObj a -> as_c a
 
 instance AsC HPath where
-  as_c (HPath r pcs) = as_c r <> (hcat $ map as_c pcs)
+  as_c (HPath r pcs) = parens (as_c r) <> (hcat $ map as_c pcs)
 
 instance AsC RArg where
   as_c = \case
     RRef _ v -> pretty v
+    RVal _ v -> as_c v
+    RHeap _ h -> as_c h
 
 as_cp :: RPrim -> [Doc a] -> Doc a
 as_cp = \case
@@ -244,24 +257,30 @@ as_cp = \case
 instance AsC RExpr where
   as_c = \case
     RCast _ a t -> parens (as_c t) <> parens (as_c a)
-    RHeapRef _ h -> as_c h
     RPrimApp _ p as -> as_cp p $ map as_c as
+    REArg _ a -> as_c a
+
+instance AsC RSetLHS where
+  as_c = \case
+    RSHeap _ h -> as_c h
+    RSVar _ v -> as_c v
 
 instance AsC RStmt where
   as_c = \case
     RSet _ hp a -> as_c hp <+> "=" <+> as_c a <> semi
-    RLet _ v hf re k ->
-      as_c hf <+> as_c v <+> "=" <+> as_c re <> semi <> hardline <> as_c k
+    RLet _ isConst v hf re k ->
+      (if isConst then "const " else "") <> as_c hf <+> as_c v <+> "=" <+> as_c re <> semi <> hardline <> as_c k
     RSeqn _ x y -> as_c x <> hardline <> as_c y
     RIf _ c t f -> cIf (as_c c) (as_c t) (as_c f)
     RWhile _ c s -> cWhile (as_c c) (as_c s)
     RPrompt _ lab s -> as_c s <> hardline <> pretty lab <> ":"
     REscape _ lab -> "goto" <+> pretty lab
     RTrace _ _args -> "printf" <> parens (dquotes $ "XXX trace\n")
+    RVoid _ -> emptyDoc
 
 instance AsC RFun where
   as_c (RFun _ args body) =
-    parens (as_c args) <+> cBraces (as_c body)
+    parens (as_c args <+> as_c ARG) <+> cBraces (as_c body)
 
 std_header :: Doc a
 std_header = vsep [ "#include <stdio.h>"
@@ -273,8 +292,8 @@ instance AsC RProg where
     vsep $
       [ std_header
       , emptyDoc
-      , as_c romf <+> as_c ROM <+> "=" <+> as_c romv <> semi
-      , as_c ramf <+> as_c RAM <> semi
+      , "static" <+> "const" <+> as_c romf <+> as_c ROM <+> "=" <+> as_c romv <> semi
+      , "static" <+> as_c ramf <+> as_c RAM <> semi
       , emptyDoc
       ]
         ++ funs'
@@ -283,9 +302,46 @@ instance AsC RProg where
 
 ---
 
-ex_rp :: RProg
-ex_rp = RProg (Heap (HStruct SrcLoc mempty) (HVStruct SrcLoc mempty)) (HStruct SrcLoc mempty) mempty
+mt :: SrcLoc
+mt = SrcLoc
 
+hnull :: HFormat
+hnull = (HStruct mt mempty)
+
+fib_iter :: RStmt
+fib_iter =
+  let ansp = HPath ARG [ HField mt "ans" ]
+      np = HPath ARG [ HField mt "n" ]
+      zero = RVal mt (HU32 mt 0)
+      one = RVal mt (HU32 mt 1)
+  in
+    RLet mt False "i" (HVal mt T_U32) (REArg mt zero) $
+    RLet mt False "j" (HVal mt T_U32) (REArg mt one) $
+    RLet mt False "k" (HVal mt T_U32) (REArg mt (RHeap mt np)) $
+    RLet mt False "nz" (HVal mt T_U1) (RPrimApp mt CNE [ (RRef mt "k") , zero ]) $
+    RIf mt (RRef mt "nz")
+    (RSeqn mt
+     (RWhile mt (RRef mt "nz") $
+      RLet mt True "t" (HVal mt T_U32) (RPrimApp mt ADD [ (RRef mt "i"), (RRef mt "j") ]) $
+      RSeqn mt (RSet mt (RSVar mt "i") (RRef mt "j")) $
+      RSeqn mt (RSet mt (RSVar mt "j") (RRef mt "t")) $
+      RLet mt True "nn" (HVal mt T_U32) (RPrimApp mt SUB [ (RRef mt "k"), one ]) $
+      RSeqn mt (RSet mt (RSVar mt "k") (RRef mt "nn")) $
+      RLet mt True "tc" (HVal mt T_U1) (RPrimApp mt CNE [ (RRef mt "k") , zero ]) $
+      RSet mt (RSVar mt "nz") (RRef mt "tc"))
+     (RSet mt (RSHeap mt ansp) (RRef mt "j")))
+    (RSet mt (RSHeap mt ansp) zero)
+
+ex_rp :: RProg
+ex_rp = RProg
+        (Heap hnull (HVStruct mt mempty))
+        hnull
+        $ M.fromList
+        [ ("test"
+          , RFun mt (HStruct mt [ ("n", (HVal mt T_U32))
+                                , ("ans", (HVal mt T_U32))]) fib_iter )
+        ]
+  
 example :: Doc a
 example =
   as_c ex_rp
