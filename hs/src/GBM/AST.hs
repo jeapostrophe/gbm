@@ -1,7 +1,11 @@
 module GBM.AST where
 
-import qualified Data.Map.Strict as M
 import qualified Data.ByteString as B
+import qualified Data.Map.Strict as M
+
+{-
+
+-}
 
 type Var = String
 
@@ -24,11 +28,11 @@ data GPrimitive
 data GExpr
   = GVar Var
   | GBool Bool
+  | GPrim GPrimitive
   | GByte Int
   | GShort Int
   | GFloat Float
   | GBytes B.ByteString
-  | GPrim GPrimitive
   | GBlock [GDefine] GExpr
   | GApp GExpr [GExpr]
   | GCond [(GExpr, GExpr)]
@@ -58,21 +62,23 @@ type Bit16 = Int
 type GSpr = [Bit16] --- 8x8
 
 data GCHR = GCHR
-            { gchr_pals :: [GPal]
-            , gchr_sprs :: [GSpr] }
+  { gchr_pals :: [GPal]
+  , gchr_sprs :: [GSpr]
+  }
   deriving (Eq, Show)
 
 data GPRG = GPRG
-            { gprg_meta :: GExpr
-            , gprg_banks :: [GExpr]
-            , gprg_root :: GExpr }
+  { gprg_meta :: GExpr
+  , gprg_banks :: [GExpr]
+  , gprg_root :: GExpr
+  }
   deriving (Eq, Show)
 
 data GROM
   = GROM_C GCHR GCHR
   | GROM_P GPRG GPRG
   | GROM_B GPRG GCHR
-  deriving (Eq, Show)  
+  deriving (Eq, Show)
 
 example :: GExpr
 example =
