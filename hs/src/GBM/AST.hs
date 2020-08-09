@@ -282,15 +282,12 @@ instance AsC RFun where
   as_c (RFun _ args body) =
     parens (as_c args <+> as_c ARG) <+> cBraces (as_c body)
 
-std_header :: Doc a
-std_header = vsep [ "#include <stdio.h>"
-                  , "#include <stdbool.h>"
-                  , "#include <stdint.h>" ]
-
 instance AsC RProg where
   as_c (RProg (Heap romf romv) ramf funs) =
     vsep $
-      [ std_header
+      [ "#include <stdio.h>"
+      , "#include <stdbool.h>"
+      , "#include <stdint.h>"
       , emptyDoc
       , "static" <+> "const" <+> as_c romf <+> as_c ROM <+> "=" <+> as_c romv <> semi
       , "static" <+> as_c ramf <+> as_c RAM <> semi
