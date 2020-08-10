@@ -1,8 +1,6 @@
-module Main where
+module Main (main) where
 
-import GBM.AST
+import qualified GBM.AST as GBM
 
 main :: IO ()
-main = do
-  putStrLn $ "// Get Bonus Machine"
-  putStrLn $ show example
+main = GBM.main

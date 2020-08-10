@@ -126,6 +126,7 @@ data RStmt
   | RIf SrcLoc RArg RStmt RStmt
   | RWhile SrcLoc RArg RStmt
   | RPrompt SrcLoc Var RStmt
+  | RRepeat SrcLoc Var
   | REscape SrcLoc Var
   | RTrace SrcLoc [RArg]
   | RVoid SrcLoc
@@ -273,10 +274,14 @@ instance AsC RStmt where
     RSeqn _ x y -> as_c x <> hardline <> as_c y
     RIf _ c t f -> cIf (as_c c) (as_c t) (as_c f)
     RWhile _ c s -> cWhile (as_c c) (as_c s)
-    RPrompt _ lab s -> as_c s <> hardline <> pretty lab <> ":"
-    REscape _ lab -> "goto" <+> pretty lab
+    RPrompt _ lab s ->
+      pretty (before lab) <> ":" <+> cBraces (as_c s) <> hardline <> pretty (after lab) <> ":" <+> semi
+    RRepeat _ lab -> "goto" <+> pretty (before lab) <> semi
+    REscape _ lab -> "goto" <+> pretty (after lab) <> semi
     RTrace _ _args -> "printf" <> parens (dquotes $ "XXX trace\n")
     RVoid _ -> emptyDoc
+    where after = ("after_" ++)
+          before = ("before_" ++)
 
 instance AsC RFun where
   as_c (RFun _ args body) =
@@ -312,22 +317,19 @@ fib_iter =
       zero = RVal mt (HU32 mt 0)
       one = RVal mt (HU32 mt 1)
   in
-    RLet mt False "i" (HVal mt T_U32) (REArg mt zero) $
-    RLet mt False "j" (HVal mt T_U32) (REArg mt one) $
-    RLet mt False "k" (HVal mt T_U32) (REArg mt (RHeap mt np)) $
-    RLet mt False "nz" (HVal mt T_U1) (RPrimApp mt CNE [ (RRef mt "k") , zero ]) $
-    RIf mt (RRef mt "nz")
-    (RSeqn mt
-     (RWhile mt (RRef mt "nz") $
-      RLet mt True "t" (HVal mt T_U32) (RPrimApp mt ADD [ (RRef mt "i"), (RRef mt "j") ]) $
-      RSeqn mt (RSet mt (RSVar mt "i") (RRef mt "j")) $
-      RSeqn mt (RSet mt (RSVar mt "j") (RRef mt "t")) $
-      RLet mt True "nn" (HVal mt T_U32) (RPrimApp mt SUB [ (RRef mt "k"), one ]) $
-      RSeqn mt (RSet mt (RSVar mt "k") (RRef mt "nn")) $
-      RLet mt True "tc" (HVal mt T_U1) (RPrimApp mt CNE [ (RRef mt "k") , zero ]) $
-      RSet mt (RSVar mt "nz") (RRef mt "tc"))
-     (RSet mt (RSHeap mt ansp) (RRef mt "j")))
-    (RSet mt (RSHeap mt ansp) zero)
+    RLet mt False "n" (HVal mt T_U32) (REArg mt (RHeap mt np)) $
+    RLet mt False "acc" (HVal mt T_U32) (REArg mt zero) $
+    RLet mt False "prev" (HVal mt T_U32) (REArg mt one) $
+    RPrompt mt "ell" $
+    RLet mt False "stop" (HVal mt T_U1) (RPrimApp mt CLT [ (RRef mt "n") , one ]) $
+    RIf mt (RRef mt "stop")
+    (RSet mt (RSHeap mt ansp) (RRef mt "acc")) $
+    RLet mt True "nm1" (HVal mt T_U32) (RPrimApp mt SUB [ (RRef mt "n"), one ]) $
+    RLet mt True "ppa" (HVal mt T_U32) (RPrimApp mt ADD [ (RRef mt "prev"), (RRef mt "acc") ]) $
+    RSeqn mt (RSet mt (RSVar mt "n") (RRef mt "nm1")) $
+    RSeqn mt (RSet mt (RSVar mt "prev") (RRef mt "acc")) $
+    RSeqn mt (RSet mt (RSVar mt "acc") (RRef mt "ppa")) $
+    RRepeat mt "ell"
 
 ex_rp :: RProg
 ex_rp = RProg
@@ -342,3 +344,8 @@ ex_rp = RProg
 example :: Doc a
 example =
   as_c ex_rp
+
+main :: IO ()
+main = do
+  putStrLn $ "// Get Bonus Machine"
+  putStrLn $ show example
