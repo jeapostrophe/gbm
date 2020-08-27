@@ -30,6 +30,10 @@ data RType
 --- The compile-time language
 {- A compile-time program is evaluated into a run-time program. -}
 
+--- XXX A Scheme/ML-like language with macros and functions and algebraic data-types. When we are compiling it, if we see a function call, we inline it, unless it is in tail-position and already appears on the stack, in which case we insert a loop. Potentially, if it is not in tail position, but still recursive, then we can do defunctionalization of the continuation. Similarly, if a function is used in a higher-order way, then can defunctionalize then.
+
+--- OS > Engine > Game > Episode > Disc > World > Course > Stage > Sector
+
 --- Heap format
 {- A heap format describes the shape of memory manipulated by the program -}
 
