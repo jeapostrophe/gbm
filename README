@@ -2,6 +2,29 @@ gbm - Get Bonus Machine
 
 A fantasy console.
 
+Stats
+- https://docs.google.com/spreadsheets/d/1_9Xrgx5ulNqhXwvRtj2n3eNYovJwcHtAHM0Y43nzLt0/edit#gid=0
+
+TIC-80
+- https://github.com/nesbox/TIC-80/wiki
+- https://www.lexaloffle.com/pico-8.php?page=faq
+
+Vulkan tutorial
+- https://vulkan-tutorial.com/Texture_mapping/Image_view_and_sampler
+- GLFW vulkan - https://www.glfw.org/docs/latest/vulkan_guide.html
+
+Wren
+- https://github.com/wren-lang/wren
+
+Simple assembler
+- http://blog.jeff.over.bz/assembly/compilers/jit/2017/01/15/x86-assembler.html
+- https://github.com/StanfordPL/x64asm/blob/cc86c415e37d4dd10920bb1664bf640e1603f83c/src/Codegen.hs
+
+Size optimization in Duktape
+- https://github.com/svaarala/duktape/blob/master/doc/low-memory.rst#optimizing-code-footprint
+
+-------------------------------------------------------
+
 DONE:
 - Experiment with extremely minimal OpenGL window setup
 
