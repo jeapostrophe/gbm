@@ -335,6 +335,18 @@ fib_iter =
     RSeqn mt (RSet mt (RSVar mt "acc") (RRef mt "ppa")) $
     RRepeat mt "ell"
 
+fib_iterm :: RStmt
+fib_iterm = do
+  n <- rlet $ arg T_U32
+  acc <- rlet $ 0
+  prev <- rlet $ 0
+  while (n > 1) $ do
+    set n $ n - 1
+    tmp <- rlet $ prev + acc
+    set prev $ acc
+    set acc $ tmp
+  return acc
+
 ex_rp :: RProg
 ex_rp = RProg
         (Heap hnull (HVStruct mt mempty))
